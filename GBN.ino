@@ -12,10 +12,12 @@ typedef signed char s8;
 typedef signed short s16;
 typedef signed long s32;
 
+const u8 GLOBAL_DIVIDE=101;
+const float GLOBAL_TIMER=(1000000/GLOBAL_DIVIDE);
 volatile u8 outputL;
 volatile u8 outputR;
 
-u8 frame;
+float frame;
 float frameSeq;
 u8 frameSeqFrame;
 u8 envelope;
@@ -105,8 +107,8 @@ int main() {
   
   
   TCCR0A = 0x02;
-  TCCR0B = 0x02;	// clkIO/8, so 1/8 MHz
-  OCR0A = 101; // ~9900.9900 Hz (512*155)
+  TCCR0B = 0x03;	// clkIO/8, so 1/8 MHz
+  OCR0A = GLOBAL_DIVIDE;
   
   TCCR2A=0b10100011;
   TCCR2B=0b00000001;
@@ -157,14 +159,15 @@ float GetFreq(u16 gbFreq){
   return 131072/(2048-gbFreq);
 }
 
-ISR(TIMER0_COMPA_vect)		// called at ~9900.9900 Hz
-{
+ISR(TIMER0_COMPA_vect){
   OCR2B=outputL;
-if(frame==0){// called at ~60Hz
+if(frame>=GLOBAL_TIMER/60){// called at ~60Hz
   //sequencer code
+
   
+  frame-=GLOBAL_TIMER/60;
 }
-if(frameSeq>=19.3378712871287f){// called at ~512Hz
+if(frameSeq>=GLOBAL_TIMER/512){// called at ~512Hz
   //Frame sequence code
   if((frameSeqFrame%2)==0){//length counter
 		if((NR14 & 0b01000000)==0b01000000){//PU1
@@ -265,7 +268,7 @@ if(frameSeq>=19.3378712871287f){// called at ~512Hz
   }
   
   frameSeqFrame++;
-  frameSeq-=19.3378712871287f;
+  frameSeq-=GLOBAL_TIMER/512;
 }
 
 	
@@ -276,9 +279,9 @@ if(frameSeq>=19.3378712871287f){// called at ~512Hz
   u8 ch2WavPos=dutyTable[((int)(CH2FPos)&0b00000111)+(((NR21&0b11000000)>>6)*8)];
   u8 ch3WavPos=waveTable[((int)(CH3FPos)&0b00011111)+(5*32)];
   ch3WavPos=(ch3WavPos >> waveShift[((NR32 & 0b01100000)>>5)]);
-  CH1FPos+=(CH1Freq/9900.9900)*8;
-  CH2FPos+=(CH2Freq/9900.9900)*8;
-  CH3FPos+=(CH3Freq/9900.9900)*32;
+  CH1FPos+=(CH1Freq/GLOBAL_TIMER)*8;
+  CH2FPos+=(CH2Freq/GLOBAL_TIMER)*8;
+  CH3FPos+=(CH3Freq/GLOBAL_TIMER)*32;
   int CHFPosI=((int)(CH1FPos))%8;
   CH1FPos=(CH1FPos-((int)(CH1FPos)))+CHFPosI;
   CHFPosI=((int)(CH2FPos))%8;
@@ -289,9 +292,8 @@ if(frameSeq>=19.3378712871287f){// called at ~512Hz
   outputL+=(ch2WavPos*NR22Volume*CH2ENL);
   outputL+=(ch3WavPos*CH3ENL);
 	//outputL+=(NR42Volume*CH4ENL);
-  frameSeq++;
   frame++;
-  frame%=165;
+  frameSeq++;
 }
 
 }
