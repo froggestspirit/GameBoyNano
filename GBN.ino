@@ -107,7 +107,7 @@ int main() {
   
   
   TCCR0A = 0x02;
-  TCCR0B = 0x03;	// clkIO/8, so 1/8 MHz
+  TCCR0B = 0x02;	//1/8 MHz
   OCR0A = GLOBAL_DIVIDE;
   
   TCCR2A=0b10100011;
