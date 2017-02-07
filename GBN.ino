@@ -162,13 +162,13 @@ u32 GetFreq(u16 gbFreq){
 
 ISR(TIMER0_COMPA_vect){
   OCR2B=outputL;
-if(frame>=GLOBAL_TIMER/60){// called at ~60Hz
+if(frame>=(GLOBAL_TIMER*PRECISION_SCALER)/60){// called at ~60Hz
   //sequencer code
 
   
-  frame-=GLOBAL_TIMER/60;
+  frame-=(GLOBAL_TIMER*PRECISION_SCALER)/60;
 }
-if(frameSeq>=GLOBAL_TIMER/512){// called at ~512Hz
+if(frameSeq>=(GLOBAL_TIMER*PRECISION_SCALER)/512){// called at ~512Hz
   //Frame sequence code
   if((frameSeqFrame%2)==0){//length counter
 		if((NR14 & 0b01000000)==0b01000000){//PU1
@@ -269,16 +269,16 @@ if(frameSeq>=GLOBAL_TIMER/512){// called at ~512Hz
   }
   
   frameSeqFrame++;
-  frameSeq-=GLOBAL_TIMER/512;
+  frameSeq-=(GLOBAL_TIMER*PRECISION_SCALER)/512;
 }
 
 	
 
 
 	outputL=0;
-  u8 ch1WavPos=dutyTable[(CH1FPos&0b00000111)+(((NR11&0b11000000)>>6)*8)];
-  u8 ch2WavPos=dutyTable[(CH2FPos&0b00000111)+(((NR21&0b11000000)>>6)*8)];
-  u8 ch3WavPos=waveTable[(CH3FPos&0b00011111)+(5*32)];
+  u8 ch1WavPos=dutyTable[((CH1FPos/PRECISION_SCALER)&0b00000111)+(((NR11&0b11000000)>>6)*8)];
+  u8 ch2WavPos=dutyTable[((CH2FPos/PRECISION_SCALER)&0b00000111)+(((NR21&0b11000000)>>6)*8)];
+  u8 ch3WavPos=waveTable[((CH3FPos/PRECISION_SCALER)&0b00011111)+(5*32)];
   ch3WavPos=(ch3WavPos >> waveShift[((NR32 & 0b01100000)>>5)]);
   CH1FPos+=(CH1Freq/GLOBAL_TIMER)*8;
   CH2FPos+=(CH2Freq/GLOBAL_TIMER)*8;
@@ -290,8 +290,8 @@ if(frameSeq>=GLOBAL_TIMER/512){// called at ~512Hz
   outputL+=(ch2WavPos*NR22Volume*CH2ENL);
   outputL+=(ch3WavPos*CH3ENL);
 	//outputL+=(NR42Volume*CH4ENL);
-  frame++;
-  frameSeq++;
+  frame+=PRECISION_SCALER;
+  frameSeq+=PRECISION_SCALER;
 }
 
 }
