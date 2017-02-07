@@ -12,13 +12,14 @@ typedef signed char s8;
 typedef signed short s16;
 typedef signed long s32;
 
+const u16 PRECISION_SCALER=0x4000;
 const u8 GLOBAL_DIVIDE=101;
-const float GLOBAL_TIMER=(1000000/GLOBAL_DIVIDE);
+const u32 GLOBAL_TIMER=(1000000/GLOBAL_DIVIDE);
 volatile u8 outputL;
 volatile u8 outputR;
 
-float frame;
-float frameSeq;
+u32 frame;
+u32 frameSeq;
 u8 frameSeqFrame;
 u8 envelope;
 u8 envelopeTimer;
@@ -63,14 +64,14 @@ bool CH3ENL;
 bool CH3ENR;
 bool CH4ENL;
 bool CH4ENR;
-float CH1FPos;
-float CH2FPos;
-float CH3FPos;
-float CH4FPos;
-float CH1Freq;
-float CH2Freq;
-float CH3Freq;
-float CH4Freq;
+u32 CH1FPos;
+u32 CH2FPos;
+u32 CH3FPos;
+u32 CH4FPos;
+u32 CH1Freq;
+u32 CH2Freq;
+u32 CH3Freq;
+u32 CH4Freq;
 
 u8 WAV[32];
 
@@ -107,7 +108,7 @@ int main() {
   
   
   TCCR0A = 0x02;
-  TCCR0B = 0x02;	//1/8 MHz
+  TCCR0B = 0x02;	// clkIO/8, so 1/8 MHz
   OCR0A = GLOBAL_DIVIDE;
   
   TCCR2A=0b10100011;
@@ -155,8 +156,8 @@ int main() {
   }
 }
 
-float GetFreq(u16 gbFreq){
-  return 131072/(2048-gbFreq);
+u32 GetFreq(u16 gbFreq){
+  return (131072*PRECISION_SCALER)/(2048-gbFreq);
 }
 
 ISR(TIMER0_COMPA_vect){
@@ -275,19 +276,16 @@ if(frameSeq>=GLOBAL_TIMER/512){// called at ~512Hz
 
 
 	outputL=0;
-  u8 ch1WavPos=dutyTable[((int)(CH1FPos)&0b00000111)+(((NR11&0b11000000)>>6)*8)];
-  u8 ch2WavPos=dutyTable[((int)(CH2FPos)&0b00000111)+(((NR21&0b11000000)>>6)*8)];
-  u8 ch3WavPos=waveTable[((int)(CH3FPos)&0b00011111)+(5*32)];
+  u8 ch1WavPos=dutyTable[(CH1FPos&0b00000111)+(((NR11&0b11000000)>>6)*8)];
+  u8 ch2WavPos=dutyTable[(CH2FPos&0b00000111)+(((NR21&0b11000000)>>6)*8)];
+  u8 ch3WavPos=waveTable[(CH3FPos&0b00011111)+(5*32)];
   ch3WavPos=(ch3WavPos >> waveShift[((NR32 & 0b01100000)>>5)]);
   CH1FPos+=(CH1Freq/GLOBAL_TIMER)*8;
   CH2FPos+=(CH2Freq/GLOBAL_TIMER)*8;
   CH3FPos+=(CH3Freq/GLOBAL_TIMER)*32;
-  int CHFPosI=((int)(CH1FPos))%8;
-  CH1FPos=(CH1FPos-((int)(CH1FPos)))+CHFPosI;
-  CHFPosI=((int)(CH2FPos))%8;
-  CH2FPos=(CH2FPos-((int)(CH2FPos)))+CHFPosI;
-  CHFPosI=((int)(CH3FPos))%32;
-  CH3FPos=(CH3FPos-((int)(CH3FPos)))+CHFPosI;
+  CH1FPos%=8;
+  CH2FPos%=8;
+  CH3FPos%=32;
 	outputL+=(ch1WavPos*NR12Volume*CH1ENL);
   outputL+=(ch2WavPos*NR22Volume*CH2ENL);
   outputL+=(ch3WavPos*CH3ENL);
@@ -297,4 +295,3 @@ if(frameSeq>=GLOBAL_TIMER/512){// called at ~512Hz
 }
 
 }
-
