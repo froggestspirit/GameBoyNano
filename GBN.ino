@@ -1,10 +1,3 @@
-#include <avr/io.h>
-#include <avr/signal.h>
-#include <avr/interrupt.h>
-#include <avr/pgmspace.h>
-
-extern "C" {
-  
 typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned long u32;
@@ -271,24 +264,22 @@ ISR(TIMER0_COMPA_vect){
 		frameSeqFrame++;
 		frameSeq-=(GLOBAL_TIMER*PRECISION_SCALER)/512;
 	}
-		outputL=0;
-		u8 ch1WavPos=dutyTable[((CH1FPos/PRECISION_SCALER)&0b00000111)+(((NR11&0b11000000)>>6)*8)];
-		u8 ch2WavPos=dutyTable[((CH2FPos/PRECISION_SCALER)&0b00000111)+(((NR21&0b11000000)>>6)*8)];
-		u8 ch3WavPos=waveTable[((CH3FPos/PRECISION_SCALER)&0b00011111)+(5*32)];
-		ch3WavPos=(ch3WavPos >> waveShift[((NR32 & 0b01100000)>>5)]);
-		CH1FPos+=(CH1Freq*8)/GLOBAL_TIMER;
-		CH2FPos+=(CH2Freq*8)/GLOBAL_TIMER;
-		CH3FPos+=(CH3Freq*32)/GLOBAL_TIMER;
-		CH1FPos%=8*PRECISION_SCALER;
-		CH2FPos%=8*PRECISION_SCALER;
-		CH3FPos%=32*PRECISION_SCALER;
-		outputL+=(ch1WavPos*NR12Volume*CH1ENL);
-		outputL+=(ch2WavPos*NR22Volume*CH2ENL);
-		outputL+=(ch3WavPos*CH3ENL);
-		//outputL+=(NR42Volume*CH4ENL);
-		frame+=PRECISION_SCALER;
-		frameSeq+=PRECISION_SCALER;
-		//Serial.println(ch3WavPos, DEC);
-	}
-
+	outputL=0;
+	u8 ch1WavPos=dutyTable[((CH1FPos/PRECISION_SCALER)&0b00000111)+(((NR11&0b11000000)>>6)*8)];
+	u8 ch2WavPos=dutyTable[((CH2FPos/PRECISION_SCALER)&0b00000111)+(((NR21&0b11000000)>>6)*8)];
+	u8 ch3WavPos=waveTable[((CH3FPos/PRECISION_SCALER)&0b00011111)+(5*32)];
+	ch3WavPos=(ch3WavPos >> waveShift[((NR32 & 0b01100000)>>5)]);
+	CH1FPos+=(CH1Freq*8)/GLOBAL_TIMER;
+	CH2FPos+=(CH2Freq*8)/GLOBAL_TIMER;
+	CH3FPos+=(CH3Freq*32)/GLOBAL_TIMER;
+	CH1FPos%=8*PRECISION_SCALER;
+	CH2FPos%=8*PRECISION_SCALER;
+	CH3FPos%=32*PRECISION_SCALER;
+	outputL+=(ch1WavPos*NR12Volume*CH1ENL);
+	outputL+=(ch2WavPos*NR22Volume*CH2ENL);
+	outputL+=(ch3WavPos*CH3ENL);
+	//outputL+=(NR42Volume*CH4ENL);
+	frame+=PRECISION_SCALER;
+	frameSeq+=PRECISION_SCALER;
+	//Serial.println(ch3WavPos, DEC);
 }
