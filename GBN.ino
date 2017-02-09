@@ -5,8 +5,8 @@ typedef signed char s8;
 typedef signed short s16;
 typedef signed long s32;
 
-const u16 PRECISION_SCALER=0x400;
-const u8 GLOBAL_DIVIDE=80;
+const u16 PRECISION_SCALER=0x2000;
+const u8 GLOBAL_DIVIDE=100;
 const u32 GLOBAL_TIMER=(1000000/GLOBAL_DIVIDE);
 volatile u8 outputL;
 volatile u8 outputR;
@@ -150,7 +150,7 @@ int main() {
 }
 
 u32 GetFreq(u16 gbFreq){
-	return (131072*PRECISION_SCALER)/(2048-gbFreq);
+	return ((131072*PRECISION_SCALER)/(2048-gbFreq))/(GLOBAL_TIMER/4);
 }
 
 ISR(TIMER0_COMPA_vect){
@@ -269,12 +269,9 @@ ISR(TIMER0_COMPA_vect){
 	u8 ch2WavPos=dutyTable[((CH2FPos/PRECISION_SCALER)&0b00000111)+(((NR21&0b11000000)>>6)*8)];
 	u8 ch3WavPos=waveTable[((CH3FPos/PRECISION_SCALER)&0b00011111)+(5*32)];
 	ch3WavPos=(ch3WavPos >> waveShift[((NR32 & 0b01100000)>>5)]);
-	CH1FPos+=(CH1Freq*8)/GLOBAL_TIMER;
-	CH2FPos+=(CH2Freq*8)/GLOBAL_TIMER;
-	CH3FPos+=(CH3Freq*32)/GLOBAL_TIMER;
-	CH1FPos%=8*PRECISION_SCALER;
-	CH2FPos%=8*PRECISION_SCALER;
-	CH3FPos%=32*PRECISION_SCALER;
+	CH1FPos+=CH1Freq;
+	CH2FPos+=CH2Freq;
+	CH3FPos+=CH3Freq*2;
 	outputL+=(ch1WavPos*NR12Volume*CH1ENL);
 	outputL+=(ch2WavPos*NR22Volume*CH2ENL);
 	outputL+=(ch3WavPos*CH3ENL);
