@@ -5,6 +5,8 @@ typedef signed char s8;
 typedef signed short s16;
 typedef signed long s32;
 
+#include "tables.h"
+
 const u8 PRECISION_DEPTH=13;
 const u16 PRECISION_SCALER=(1<<PRECISION_DEPTH);
 const u8 GLOBAL_DIVIDE=100;
@@ -71,28 +73,6 @@ u32 CH4Freq;
 
 u8 WAV[32];
 
-const u8 dutyTable[] = {
-	0, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 0, 0, 0, 0, 0, 1,
-	1, 0, 0, 0, 0, 1, 1, 1,
-	0, 1, 1, 1, 1, 1, 1, 0
-};
-const u8 waveTable[] = {
-	0, 2, 4, 6, 8, 10, 12, 14, 15, 15, 15, 14, 14, 13, 13, 12, 12, 11, 10, 9, 8, 7, 6, 5, 4, 4, 3, 3, 2, 2, 1, 1,
-	0, 2, 4, 6, 8, 10, 12, 14, 14, 15, 15, 15, 15, 14, 14, 14, 13, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 2, 1, 1,
-	1, 3, 6, 9, 11, 13, 14, 14, 14, 14, 15, 15, 15, 15, 14, 13, 13, 14, 15, 15, 15, 15, 14, 14, 14, 14, 13, 11, 9, 6, 3, 1,
-	0, 2, 4, 6, 8, 10, 12, 13, 14, 15, 15, 14, 13, 14, 15, 15, 14, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 13, 14, 14, 15, 7, 7, 15, 14, 14, 13, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 3, 3, 2, 2, 1, 1, 15, 15, 14, 14, 12, 12, 10, 10, 8, 8, 10, 10, 12, 12, 14, 14,
-	0, 2, 4, 6, 8, 10, 12, 14, 12, 11, 10, 9, 8, 7, 6, 5, 15, 15, 15, 14, 14, 13, 13, 12, 4, 4, 3, 3, 2, 2, 1, 1,
-	12, 0, 10, 9, 8, 7, 15, 5, 15, 15, 15, 14, 14, 13, 13, 12, 4, 4, 3, 3, 2, 2, 15, 1, 0, 2, 4, 6, 8, 10, 12, 14,
-	4, 4, 3, 3, 2, 2, 1, 15, 0, 0, 4, 6, 8, 10, 12, 14, 15, 8, 15, 14, 14, 13, 13, 12, 12, 11, 10, 9, 8, 7, 6, 5,
-	1, 1, 0, 0, 0, 0, 0, 8, 0, 0, 1, 3, 5, 7, 9, 10, 11, 4, 11, 10, 10, 9, 9, 8, 8, 7, 6, 5, 4, 3, 2, 1
-};
-const u8 waveShift[] = {
-	4, 0, 1, 2
-};
-
 int main() {
 	//Serial.begin(9600);
 	asm("cli");
@@ -118,7 +98,7 @@ int main() {
 	frameSeqFrame=0;
 
 	NR11=0xC0;
-	NR12=0x92;
+	NR12=0x97;
 	NR12Timer=(NR12 & 0b00000111);
 	NR12Volume=((NR12 & 0b11110000)>>4);
 	NR12Sign=((NR12 & 0b00001000)>>3);
@@ -126,7 +106,7 @@ int main() {
 	NR14=0x06;
 
 	NR21=0xC0;
-	NR22=0xA2;
+	NR22=0xA7;
 	NR22Timer=(NR22 & 0b00000111);
 	NR22Volume=((NR22 & 0b11110000)>>4);
 	NR22Sign=((NR22 & 0b00001000)>>3);
@@ -166,7 +146,7 @@ ISR(TIMER0_COMPA_vect){
 	}
 	if(frameSeq>=FRAME_SEQ_MINUS){// called at ~512Hz
 		//Frame sequence code
-		if((frameSeqFrame%2)==0){//length counter
+		if((frameSeqFrame&1)==0){//length counter
 			if((NR14 & 0b01000000)==0b01000000){//PU1
 				if((NR11 & 0b00111111)>0){
 					NR11--;
@@ -209,7 +189,7 @@ ISR(TIMER0_COMPA_vect){
 			}
 		}
 
-		if((frameSeqFrame%8)==7){//envelope counter
+		if((frameSeqFrame&7)==7){//envelope counter
 			if(NR12Timer!=0){//PU1
 				NR12Timer--;
 				if(NR12Timer==0){
@@ -260,7 +240,7 @@ ISR(TIMER0_COMPA_vect){
 			}
 		}
 
-		if((frameSeqFrame%4)==2){//sweep counter
+		if((frameSeqFrame&3)==2){//sweep counter
 
 		}
 
