@@ -24,54 +24,59 @@ u8 envelopeTimer;
 u8 envelopeVolume;
 s8 envelopeSign;
 
-u8 NR10;
-u8 NR11;
-u8 NR12;
-u8 NR12Timer;
-u8 NR12Volume;
-bool NR12Sign;
-u8 NR13;
-u8 NR14;
-u8 NR21;
-u8 NR22;
-u8 NR22Timer;
-u8 NR22Volume;
-bool NR22Sign;
-u8 NR23;
-u8 NR24;
-u8 NR30;
-u8 NR31;
-u8 NR32;
-u8 NR33;
-u8 NR34;
-u8 NR41;
-u8 NR42;
-u8 NR42Timer;
-u8 NR42Volume;
-bool NR42Sign;
+u8 NR10Period;
+bool NR10Negate;
+u8 NR10Shift;
+u8 NRx1Duty[2];//only the first 2 channels use this
+u8 NRx1Length[4];//6-bit for channels 1,2,4. 8-bit for channel 3
+u8 NRx2Decay[4];
+u8 NRx2Velocity[4];
+u8 NRx2Timer[4];
+u8 NRx2Volume[4];
+bool NRx2Sign[4];
+bool NRx4LenEn[4];//length enable flag
+bool NRx4Trigger[4];//Trigger a note
+u16 NRxFreq[4];
+u8 NR30DAC;
+u8 NR32Volume;
 u8 NR43;
-u8 NR44;
 u8 NR50;
 u8 NR51;
 u8 NR52;
-bool CH1ENL;
-bool CH1ENR;
-bool CH2ENL;
-bool CH2ENR;
-bool CH3ENL;
-bool CH3ENR;
-bool CH4ENL;
-bool CH4ENR;
-u32 CH1FPos;
-u32 CH2FPos;
-u32 CH3FPos;
-u32 CH4FPos;
-u32 CH1Freq;
-u32 CH2Freq;
-u32 CH3Freq;
-u32 CH4Freq;
+bool CHENL[4];
+bool CHENR[4];
+u32 CHFPos[4];
+u32 CHFreq[4];
 
 u8 WAV[32];
+
+u32 GetFreq(u16 gbFreq){
+  return ((131072*PRECISION_SCALER)/(2048-gbFreq))/(GLOBAL_TIMER/4);
+}
+
+void writeNR10(u8 value){//sweep for channel 1
+  NR10Shift=(value&0b00000111);
+  NR10Period=((value>>4)&0b00000111);
+  NR10Negate=((value&0b00001000)>>3); 
+}
+
+u8 readNR10(){//sweep for channel 1
+  return(NR10Shift+(NR10Negate<<3)+(NR10Period<<4));
+}
+
+void writeNRx2(u8 channel, u8 value){//envelope, channels 1,2, and 4. 3 is unused here
+  NRx2Decay[channel]=NRx2Timer[channel]=(value&0b00000111);
+  NRx2Velocity[channel]=NRx2Volume[channel]=(value>>4);
+  NRx2Sign[channel]=((value&0b00001000)>>3); 
+}
+
+u8 readNRx2(u8 channel){//envelope, channels 1,2, and 4. 3 is unused here
+  return(NRx2Decay[channel]+(NRx2Sign[channel]<<3)+(NRx2Velocity[channel]<<4));
+}
+
+void writeWAV(u8 index){//copies waveform to the WAV buffer
+  for(u8 i=0; i<32; i++) WAV[i]=waveTable[(index*32)+i];
+}
 
 int main() {
 	//Serial.begin(9600);
@@ -97,43 +102,26 @@ int main() {
 	frameSeq=0;
 	frameSeqFrame=0;
 
-	NR11=0xC0;
-	NR12=0x97;
-	NR12Timer=(NR12 & 0b00000111);
-	NR12Volume=((NR12 & 0b11110000)>>4);
-	NR12Sign=((NR12 & 0b00001000)>>3);
-	NR13=0x28;
-	NR14=0x06;
+	NRx1Duty[0]=3;
+	writeNRx2(0, 0x97);//set the first channel to 0x97
+	NRxFreq[0]=0x0628;
 
-	NR21=0xC0;
-	NR22=0xA7;
-	NR22Timer=(NR22 & 0b00000111);
-	NR22Volume=((NR22 & 0b11110000)>>4);
-	NR22Sign=((NR22 & 0b00001000)>>3);
-	NR23=0x9D;
-	NR24=0x06;
+	NRx1Duty[1]=3;
+	writeNRx2(1, 0xA7);//set the second channel to 0xA7
+	NRxFreq[1]=0x069D;
 
-	NR32=0x40;
-	NR33=0x3B;
-	NR34=0x05;
-	CH1ENL=1;
-	CH2ENL=1;
-	CH3ENL=1;
-	CH1FPos=0;
-	CH2FPos=0;
-	CH3FPos=0;
-	CH4FPos=0;
-	CH1Freq=GetFreq(NR13+((NR14&0b00000111)<<8));
-	CH2Freq=GetFreq(NR23+((NR24&0b00000111)<<8));
-	CH3Freq=GetFreq(NR33+((NR34&0b00000111)<<8));
-	CH4Freq=CH1Freq;
+	NR32Volume=1;//1 is 100%
+  writeWAV(5);//load the 6th waveform
+	NRxFreq[2]=0x053B;
+  for(u8 i=0; i<4; i++){
+    CHENL[i]=1;
+    CHENR[i]=1;
+  	CHFPos[i]=0;
+  	CHFreq[i]=GetFreq(NRxFreq[i]);
+  }
 	while(1){
 
 	}
-}
-
-u32 GetFreq(u16 gbFreq){
-	return ((131072*PRECISION_SCALER)/(2048-gbFreq))/(GLOBAL_TIMER/4);
 }
 
 ISR(TIMER0_COMPA_vect){
@@ -147,97 +135,39 @@ ISR(TIMER0_COMPA_vect){
 	if(frameSeq>=FRAME_SEQ_MINUS){// called at ~512Hz
 		//Frame sequence code
 		if((frameSeqFrame&1)==0){//length counter
-			if((NR14 & 0b01000000)==0b01000000){//PU1
-				if((NR11 & 0b00111111)>0){
-					NR11--;
-					if((NR11 & 0b00111111)==0){
-						NR52&=0b01110111;
-						CH1ENL=0;
-						CH1ENR=0;
-					}
-				}
-			}
-			if((NR24 & 0b01000000)==0b01000000){//PU2
-				if((NR21 & 0b00111111)>0){
-					NR21--;
-					if((NR21 & 0b00111111)==0){
-						NR52&=0b10111011;
-						CH2ENL=0;
-						CH2ENR=0;
-					}
-				}
-			}
-			if((NR34 & 0b01000000)==0b01000000){//WAVE
-				if(NR31>0){
-					NR31--;
-					if(NR31==0){
-						NR52&=0b11011101;
-						CH3ENL=0;
-						CH3ENR=0;
-					}
-				}
-			}
-			if((NR44 & 0b01000000)==0b01000000){//NSE
-				if((NR41 & 0b00111111)>0){
-					NR41--;
-					if((NR41 & 0b00111111)==0){
-						NR52&=0b11101110;
-						CH4ENL=0;
-						CH4ENR=0;
-					}
-				}
-			}
-		}
+      for(u8 channel=0; channel<4; channel++){
+  			if(NRx4LenEn[channel]==1){
+  				if(NRx1Length[channel]>0){
+  					NRx1Length[channel]--;
+  					if(NRx1Length[channel]==0){
+  						NR52&=NR52Mask[channel];
+  						CHENL[channel]=0;
+  						CHENR[channel]=0;
+  					}
+  				}
+  			}
+  		}
+	  }
 
 		if((frameSeqFrame&7)==7){//envelope counter
-			if(NR12Timer!=0){//PU1
-				NR12Timer--;
-				if(NR12Timer==0){
-					if(NR12Sign==1){
-						if(NR12Volume<0x0F){
-							NR12Volume++;
-							NR12Timer=(NR12 & 0b00000111);
-						}
-					}else if(NR12Sign==0){
-						if(NR12Volume>0x00){
-							NR12Volume--;
-							NR12Timer=(NR12 & 0b00000111);
-						}
-					}
-				}
-			}
-			if(NR22Timer!=0){//PU2
-				NR22Timer--;
-				if(NR22Timer==0){
-					if(NR22Sign==1){
-						if(NR22Volume<0x0F){
-							NR22Volume++;
-							NR22Timer=(NR22 & 0b00000111);
-						}
-					}else if(NR22Sign==0){
-						if(NR22Volume>0x00){
-							NR22Volume--;
-							NR22Timer=(NR22 & 0b00000111);
-						}
-					}
-				}
-			}
-			if(NR42Timer!=0){//NSE
-				NR42Timer--;
-				if(NR42Timer==0){
-					if(NR42Sign==1){
-						if(NR42Volume<0x0F){
-							NR42Volume++;
-							NR42Timer=(NR42 & 0b00000111);
-						}
-					}else if(NR42Sign==0){
-						if(NR42Volume>0x00){
-							NR42Volume--;
-							NR42Timer=(NR42 & 0b00000111);
-						}
-					}
-				}
-			}
+      for(u8 channel=0; channel<4; channel++){
+  			if(NRx2Timer[channel]!=0){
+  				NRx2Timer[channel]--;
+  				if(NRx2Timer[channel]==0){
+  					if(NRx2Sign[channel]==1){
+  						if(NRx2Volume[channel]<0x0F){
+  							NRx2Volume[channel]++;
+  							NRx2Timer[channel]=NRx2Decay[channel];
+  						}
+  					}else if(NRx2Sign[channel]==0){
+  						if(NRx2Volume[channel]>0x00){
+  							NRx2Volume[channel]--;
+  							NRx2Timer[channel]=NRx2Decay[channel];
+  						}
+  					}
+  				}
+  			}
+  		}
 		}
 
 		if((frameSeqFrame&3)==2){//sweep counter
@@ -248,18 +178,18 @@ ISR(TIMER0_COMPA_vect){
 		frameSeq-=FRAME_SEQ_MINUS;
 	}
 	outputL=0;
-	u8 ch1WavPos=dutyTable[((CH1FPos>>PRECISION_DEPTH)&0b00000111)+(((NR11&0b11000000)>>6)*8)];
-	u8 ch2WavPos=dutyTable[((CH2FPos>>PRECISION_DEPTH)&0b00000111)+(((NR21&0b11000000)>>6)*8)];
-	u8 ch3WavPos=waveTable[((CH3FPos>>PRECISION_DEPTH)&0b00011111)+(5*32)];
-	ch3WavPos=(ch3WavPos >> waveShift[((NR32 & 0b01100000)>>5)]);
-	CH1FPos+=CH1Freq;
-	CH2FPos+=CH2Freq;
-	CH3FPos+=CH3Freq*2;
-	outputL+=(ch1WavPos*NR12Volume*CH1ENL);
-	outputL+=(ch2WavPos*NR22Volume*CH2ENL);
-	outputL+=(ch3WavPos*CH3ENL);
-	//outputL+=(NR42Volume*CH4ENL);
+  u8 chWavPos=dutyTable[((CHFPos[0]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[0]*8)];
+  outputL+=(chWavPos*NRx2Volume[0]*CHENL[0]);
+  chWavPos=dutyTable[((CHFPos[1]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[1]*8)];
+  outputL+=(chWavPos*NRx2Volume[1]*CHENL[1]);
+	chWavPos=WAV[((CHFPos[2]>>PRECISION_DEPTH)&0b00011111)];
+	chWavPos=(chWavPos >> waveShift[NR32Volume]);
+  outputL+=(chWavPos*CHENL[2]);
+	CHFPos[0]+=CHFreq[0];
+	CHFPos[1]+=CHFreq[1];
+	CHFPos[2]+=CHFreq[2]*2;
+	//outputL+=(NRx2Volume[3]*CHENL[3]);
 	frame+=PRECISION_SCALER;
 	frameSeq+=PRECISION_SCALER;
-	//Serial.println(ch3WavPos, DEC);
+	//Serial.println(chWavPos, DEC);
 }
