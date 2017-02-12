@@ -1,7 +1,7 @@
 void executeCommand(u8 channel){//the code to figure out what bytes do what actions
 	curCommand=song[trackPos[channel]];
 	if(curCommand<0xD0){//notes
-		trackNoteLength[channel]=(curCommand&0x0F)*trackSpeed[channel];
+		trackNoteLength[channel]=((curCommand&0x0F)+1)*trackSpeed[channel];
 		if(curCommand>0x0F){//note
 			trackNote[channel]=(curCommand>>4)-1;
 			trackBaseFreq[channel]=freqTable[((7-trackOctave[channel])*12)+trackNote[channel]];
