@@ -1,10 +1,10 @@
 void executeCommand(u8 channel){//the code to figure out what bytes do what actions
 	curCommand=song[trackPos[channel]];
 	if(curCommand<0xD0){//notes
-		trackNoteLength[channel]=((curCommand&0x0F)+1)*trackSpeed[channel];
+		trackNoteLength[channel]+=(((curCommand&0x0F)+1)*trackSpeed[channel])*10;
 		if(curCommand>0x0F){//note
 			trackNote[channel]=(curCommand>>4)-1;
-			trackBaseFreq[channel]=freqTable[((7-trackOctave[channel])*12)+trackNote[channel]];
+			trackBaseFreq[channel]=freqTableGB[((7-trackOctave[channel])*12)+trackNote[channel]]+trackTone[channel];
 			if(channel!=2){
 				writeNRx2(channel,trackEnvelope[channel]);
 			}else{
@@ -170,22 +170,47 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 
 			break;
 			case 0xFC://jump
-
-			break;
-			case 0xFD://loop
-				trackPos[channel]++;
-				trackLoopNumber[channel]=song[trackPos[channel]];
 				trackPos[channel]++;
 				trackLoopTo[channel]=song[trackPos[channel]];
 				trackPos[channel]++;
 				trackLoopTo[channel]+=(song[trackPos[channel]]<<8)-0x4001;
 				trackPos[channel]=trackLoopTo[channel];
 			break;
+			case 0xFD://loop
+				trackPos[channel]++;
+				if(!trackLooping[channel]){
+					trackLoopNumber[channel]=song[trackPos[channel]];
+					if(trackLoopNumber[channel]>0) trackLooping[channel]=true;//don't set if it's an infinite loop
+				}
+				trackPos[channel]++;
+				trackLoopTo[channel]=song[trackPos[channel]];
+				trackPos[channel]++;
+				trackLoopTo[channel]+=(song[trackPos[channel]]<<8)-0x4001;
+				trackLoopNumber[channel]--;
+				if(!trackLooping[channel]){//infinite loop
+					trackPos[channel]=trackLoopTo[channel];
+				}else if(trackLoopNumber[channel]>0){
+					trackPos[channel]=trackLoopTo[channel];
+				}else{
+					trackLooping[channel]=false;
+				}
+			break;
 			case 0xFE://call
-
+				trackPos[channel]++;
+				trackLoopTo[channel]=song[trackPos[channel]];
+				trackPos[channel]++;
+				trackLoopTo[channel]+=(song[trackPos[channel]]<<8)-0x4001;
+				trackRetPos[channel]=trackPos[channel];
+				trackPos[channel]=trackLoopTo[channel];
 			break;
 			case 0xFF://return
-
+				if(trackRetPos[channel]>0){
+					trackPos[channel]=trackRetPos[channel];
+					trackRetPos[channel]=0;
+				}else{
+					trackDone[channel]=true;
+					CHENL[channel]=CHENR[channel]=0;
+				}
 			break;
 		}
 	}
@@ -194,14 +219,14 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 
 void playerProcess(u8 channel){//main engine code
 	//Serial.println(trackNoteLength[2], HEX);
-	while(trackNoteLength[channel]==0) executeCommand(channel);
+	while(trackNoteLength[channel]<=0) executeCommand(channel);
 	if(trackBaseFreq[channel]>0){
-		if(trackVibratoState[channel]==0) NRxFreq[channel]=trackBaseFreq[channel]+trackVibratoDepthAdd[channel]+trackTone[channel];
-		if(trackVibratoState[channel]==1) NRxFreq[channel]=(trackBaseFreq[channel]-trackVibratoDepthSub[channel])+trackTone[channel];
+		if(trackVibratoState[channel]==0) NRxFreq[channel]=trackBaseFreq[channel]+trackVibratoDepthAdd[channel];
+		if(trackVibratoState[channel]==1) NRxFreq[channel]=(trackBaseFreq[channel]-trackVibratoDepthSub[channel]);
 		NRxFreq[channel]&=0x7FF;
 		CHFreq[channel]=GetFreq(NRxFreq[channel]);
 		
 	}
-	trackNoteLength[channel]--;
+	trackNoteLength[channel]-=12;
 }
 

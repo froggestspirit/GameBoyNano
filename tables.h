@@ -25,7 +25,7 @@ const u8 lengthLoadMask[] = {//for length-enabled notes. all channels except 3 u
 const u8 NR52Mask[] = {//for disabling specific channels when length expires.
 	0b01110111, 0b10111011, 0b11011101, 0b11101110
 };
-const u16 freqTable[] = {//starting with C3, one for each note the gameboy can handle.
+const u16 freqTableGB[] = {//starting with C3, one for each note the gameboy can handle.
 	  44, 156, 262, 363, 457, 547, 631, 710, 786, 854, 923, 986,
 	1046,1102,1155,1205,1253,1297,1339,1379,1417,1452,1486,1517,
 	1546,1575,1602,1627,1650,1673,1694,1714,1732,1750,1767,1783,
@@ -33,3 +33,4 @@ const u16 freqTable[] = {//starting with C3, one for each note the gameboy can h
 	1923,1930,1936,1943,1949,1954,1959,1964,1969,1974,1978,1982,
 	1985,1988,1992,1995,1998,2001,2004,2006,2009,2011,2013,2015
 };
+

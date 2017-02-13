@@ -5,15 +5,17 @@ typedef signed char s8;
 typedef signed short s16;
 typedef signed long s32;
 
-#include "tables.h"
-#include "song.h"
-
 const u8 PRECISION_DEPTH=13;
 const u16 PRECISION_SCALER=(1<<PRECISION_DEPTH);
-const u8 GLOBAL_DIVIDE=100;
+const u8 GLOBAL_DIVIDE=96;
 const u32 GLOBAL_TIMER=(1000000/GLOBAL_DIVIDE);
 const u32 FRAME_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/60;
 const u32 FRAME_SEQ_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/512;
+
+#include "tables.h"
+#include "freqtable.h"
+#include "song.h"
+
 volatile u8 outputL;
 volatile u8 outputR;
 
@@ -53,8 +55,10 @@ bool playing;
 u16 tempo;
 u8 curCommand;
 u16 trackPos[4];//position in the song array of each track
+u16 trackRetPos[4];//position in the song array of each track
 u16 trackLoopTo[4];
 u8 trackLoopNumber[4];
+bool trackLooping[4];
 u16 trackDelay[4];//time before next event is read
 u16 trackTone[4];
 u8 trackNote[4];
@@ -62,7 +66,7 @@ u8 trackEnvelope[4];
 u16 trackBaseFreq[4];
 u8 trackSpeed[4];
 u8 trackOctave[4];
-u8 trackNoteLength[4];
+s16 trackNoteLength[4];
 u8 trackArpDuty[4*4];
 bool trackUseArpDuty[4];
 //trackPitch[4];
@@ -78,7 +82,7 @@ u8 trackVibratoState[4];
 bool trackDone[4];//track is done playing
 
 u32 GetFreq(u16 gbFreq){
-	return ((131072*PRECISION_SCALER)/(2048-gbFreq))/(GLOBAL_TIMER/4);
+	return pgm_read_word_near(freqTable + gbFreq);
 }
 
 void initPlayer(){//set up the variables for starting a song
@@ -97,14 +101,16 @@ void initPlayer(){//set up the variables for starting a song
 		CHFPos[i]=0;
 		CHFreq[i]=0;
 		trackPos[i]=0;
+		trackRetPos[i]=0;
 		trackLoopTo[i]=0;
-		trackLoopNumber[i]=0;
+		trackLoopNumber[i]=0xFF;
+		trackLooping[i]=false;
 		trackDelay[i]=0;
 		trackTone[i]=0;
 		trackNote[i]=0;
 		trackEnvelope[i]=0;
 		trackBaseFreq[i]=0;
-		trackSpeed[i]=0;
+		trackSpeed[i]=1;
 		trackOctave[i]=0;
 		trackNoteLength[i]=0;
 		trackArpDuty[i*4]=0;
@@ -134,7 +140,7 @@ void initPlayer(){//set up the variables for starting a song
 	NR52=0;
 	for(int i=0; i<32; i++) WAV[i]=0;
 	playing=false;
-	tempo=0;
+	tempo=0x0100;
 	curCommand=0;
 }
 
@@ -199,57 +205,57 @@ ISR(TIMER0_COMPA_vect){
 	OCR2B=outputL;
 	if(frame>=FRAME_MINUS){// called at ~60Hz
 		//sequencer code
-    if(!playing){
-		trackPos[0]=(song[1]+(song[2]<<8))-0x4000;
-		trackPos[1]=(song[4]+(song[5]<<8))-0x4000;
-		trackPos[2]=(song[7]+(song[8]<<8))-0x4000;
-		//trackPos[3]=(song[10]+(song[11]<<8))-0x4000;
-		playing=true;
-	}else{
-		for(u8 i=0; i<4; i++){
-			if(trackDone[i]==false){
-			   playerProcess(i);
+		if(!playing){
+			trackPos[0]=(song[1]+(song[2]<<8))-0x4000;
+			trackPos[1]=(song[4]+(song[5]<<8))-0x4000;
+			trackPos[2]=(song[7]+(song[8]<<8))-0x4000;
+			//trackPos[3]=(song[10]+(song[11]<<8))-0x4000;
+			playing=true;
+		}else{
+			for(u8 i=0; i<4; i++){
+				if(trackDone[i]==false){
+				   playerProcess(i);
+				}
 			}
-		  }
 		}
 		frame-=FRAME_MINUS;
 	}
 	if(frameSeq>=FRAME_SEQ_MINUS){// called at ~512Hz
 		//Frame sequence code
 		if((frameSeqFrame&1)==0){//length counter
-		for(u8 channel=0; channel<4; channel++){
-  			if(NRx4LenEn[channel]==1){
-  				if(NRx1Length[channel]>0){
-  					NRx1Length[channel]--;
-  					if(NRx1Length[channel]==0){
-  						NR52&=NR52Mask[channel];
-  						CHENL[channel]=0;
-  						CHENR[channel]=0;
-  					}
-  				}
-  			}
-  		}
-	  }
+			for(u8 channel=0; channel<4; channel++){
+				if(NRx4LenEn[channel]==1){
+					if(NRx1Length[channel]>0){
+						NRx1Length[channel]--;
+						if(NRx1Length[channel]==0){
+							NR52&=NR52Mask[channel];
+							CHENL[channel]=0;
+							CHENR[channel]=0;
+						}
+					}
+				}
+			}
+		}
 
 		if((frameSeqFrame&7)==7){//envelope counter
-      for(u8 channel=0; channel<4; channel++){
-  			if(NRx2Timer[channel]!=0){
-  				NRx2Timer[channel]--;
-  				if(NRx2Timer[channel]==0){
-  					if(NRx2Sign[channel]==1){
-  						if(NRx2Volume[channel]<0x0F){
-  							NRx2Volume[channel]++;
-  							NRx2Timer[channel]=NRx2Decay[channel];
-  						}
-  					}else if(NRx2Sign[channel]==0){
-  						if(NRx2Volume[channel]>0x00){
-  							NRx2Volume[channel]--;
-  							NRx2Timer[channel]=NRx2Decay[channel];
-  						}
-  					}
-  				}
-  			}
-  		}
+			for(u8 channel=0; channel<4; channel++){
+				if(NRx2Timer[channel]!=0){
+					NRx2Timer[channel]--;
+					if(NRx2Timer[channel]==0){
+						if(NRx2Sign[channel]==1){
+							if(NRx2Volume[channel]<0x0F){
+								NRx2Volume[channel]++;
+								NRx2Timer[channel]=NRx2Decay[channel];
+							}
+						}else if(NRx2Sign[channel]==0){
+							if(NRx2Volume[channel]>0x00){
+								NRx2Volume[channel]--;
+								NRx2Timer[channel]=NRx2Decay[channel];
+							}
+						}
+					}
+				}
+			}
 		}
 
 		if((frameSeqFrame&3)==2){//sweep counter
