@@ -5,12 +5,12 @@ typedef signed char s8;
 typedef signed short s16;
 typedef signed long s32;
 
-const u8 PRECISION_DEPTH=13;
+const u8 PRECISION_DEPTH=12;
 const u16 PRECISION_SCALER=(1<<PRECISION_DEPTH);
-const u8 GLOBAL_DIVIDE=96;
+const u8 GLOBAL_DIVIDE=92;
 const u32 GLOBAL_TIMER=(1000000/GLOBAL_DIVIDE);
-const u32 FRAME_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/60;
-const u32 FRAME_SEQ_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/512;
+const u32 FRAME_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/30;
+const u32 FRAME_SEQ_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/256;
 
 #include "tables.h"
 #include "freqtable.h"
@@ -19,6 +19,7 @@ const u32 FRAME_SEQ_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/512;
 volatile u8 outputL;
 volatile u8 outputR;
 
+bool bufFrame;
 u32 frame;
 u32 frameSeq;
 u8 frameSeqFrame;
@@ -63,7 +64,6 @@ u16 trackDelay[4];//time before next event is read
 u16 trackTone[4];
 u8 trackNote[4];
 u8 trackEnvelope[4];
-u16 trackBaseFreq[4];
 u8 trackSpeed[4];
 u8 trackOctave[4];
 s16 trackNoteLength[4];
@@ -72,6 +72,7 @@ bool trackUseArpDuty[4];
 //trackPitch[4];
 //trackNotePitch[4];
 //trackFinalPitch[4];
+u8 trackVibratoDepth[4];
 u8 trackVibratoDepthAdd[4];
 u8 trackVibratoDepthSub[4];
 u8 trackVibratoSpeed[4];
@@ -109,7 +110,6 @@ void initPlayer(){//set up the variables for starting a song
 		trackTone[i]=0;
 		trackNote[i]=0;
 		trackEnvelope[i]=0;
-		trackBaseFreq[i]=0;
 		trackSpeed[i]=1;
 		trackOctave[i]=0;
 		trackNoteLength[i]=0;
@@ -118,6 +118,7 @@ void initPlayer(){//set up the variables for starting a song
 		trackArpDuty[(i*4)+2]=0;
 		trackArpDuty[(i*4)+3]=0;
 		trackUseArpDuty[i]=false;
+		trackVibratoDepth[i]=0;
 		trackVibratoDepthAdd[i]=0;
 		trackVibratoDepthSub[i]=0;
 		trackVibratoSpeed[i]=0;
@@ -203,7 +204,7 @@ int main() {
 
 ISR(TIMER0_COMPA_vect){
 	OCR2B=outputL;
-	if(frame>=FRAME_MINUS){// called at ~60Hz
+  if(frame>=FRAME_MINUS){// called at ~60Hz
 		//sequencer code
 		if(!playing){
 			trackPos[0]=(song[1]+(song[2]<<8))-0x4000;
@@ -265,7 +266,7 @@ ISR(TIMER0_COMPA_vect){
 		frameSeqFrame++;
 		frameSeq-=FRAME_SEQ_MINUS;
 	}
-	outputL=0;
+  outputL=0;
 	u8 chWavPos=dutyTable[((CHFPos[0]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[0]*8)];
 	outputL+=(chWavPos*NRx2Volume[0]*CHENL[0]);
 	chWavPos=dutyTable[((CHFPos[1]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[1]*8)];
