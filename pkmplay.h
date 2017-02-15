@@ -2,16 +2,18 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 	curCommand=song[trackPos[channel]];
 	if(curCommand<0xD0){//notes
 		trackNoteLength[channel]+=(((curCommand&0x0F)+1)*trackSpeed[channel])*10;
+		trackVibratoState[channel]|=2;
+		trackVibratoDelayTimer[channel]=trackVibratoDelay[channel];
 		if(curCommand>0x0F){//note
 			trackNote[channel]=(curCommand>>4)-1;
-			trackBaseFreq[channel]=freqTableGB[((7-trackOctave[channel])*12)+trackNote[channel]]+trackTone[channel];
+			NRxFreq[channel]=freqTableGB[((7-trackOctave[channel])*12)+trackNote[channel]]+trackTone[channel];
 			if(channel!=2){
 				writeNRx2(channel,trackEnvelope[channel]);
 			}else{
 				NR32Volume=(trackEnvelope[2]>>4);
 			}
 		}else{//rest
-			trackBaseFreq[channel]=0;
+			NRxFreq[channel]=0;
 			if(channel!=2){
 				writeNRx2(channel,0);
 			}else{
@@ -80,8 +82,9 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 				trackVibratoDelay[channel]=trackVibratoDelayTimer[channel]=song[trackPos[channel]];
 				trackPos[channel]++;
 				curCommand=song[trackPos[channel]];
-				trackVibratoSpeed[channel]=trackVibratoTimer[channel]=(curCommand>>4);
-				trackVibratoDepthAdd[channel]=trackVibratoDepthSub[channel]=((curCommand&0x0F)>>1);
+				trackVibratoSpeed[channel]=(curCommand&0x0F);
+				trackVibratoDepth[channel]=trackVibratoTimer[channel]=(curCommand>>4);
+				trackVibratoDepthAdd[channel]=trackVibratoDepthSub[channel]=(trackVibratoDepth[channel]>>1);
 				trackVibratoDepthAdd[channel]+=(curCommand&1);//increase this if the mod was an odd number
 			break;
 			case 0xE2://unused
@@ -220,13 +223,33 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 void playerProcess(u8 channel){//main engine code
 	//Serial.println(trackNoteLength[2], HEX);
 	while(trackNoteLength[channel]<=0) executeCommand(channel);
-	if(trackBaseFreq[channel]>0){
-		if(trackVibratoState[channel]==0) NRxFreq[channel]=trackBaseFreq[channel]+trackVibratoDepthAdd[channel];
-		if(trackVibratoState[channel]==1) NRxFreq[channel]=(trackBaseFreq[channel]-trackVibratoDepthSub[channel]);
+	if(NRxFreq[channel]>0){
+		if(trackVibratoDepth[channel]>0){
+			if(trackVibratoDelayTimer[channel]==0){
+				if(trackVibratoTimer[channel]==0){
+					trackVibratoTimer[channel]=trackVibratoSpeed[channel];
+					trackVibratoState[channel]^=1;
+					if(trackVibratoState[channel]==0){
+						NRxFreq[channel]+=trackVibratoDepth[channel];
+					}else if(trackVibratoState[channel]==1){
+						NRxFreq[channel]-=trackVibratoDepth[channel];
+					}else if(trackVibratoState[channel]==2){
+						NRxFreq[channel]+=trackVibratoDepthAdd[channel];
+						trackVibratoState[channel]=0;
+					}else{
+						NRxFreq[channel]-=trackVibratoDepthSub[channel];
+						trackVibratoState[channel]=1;
+					}
+				}else{
+					trackVibratoTimer[channel]--;
+				}
+			}else{
+				trackVibratoDelayTimer[channel]--;
+			}
+		}
 		NRxFreq[channel]&=0x7FF;
 		CHFreq[channel]=GetFreq(NRxFreq[channel]);
 		
 	}
-	trackNoteLength[channel]-=12;
+	trackNoteLength[channel]-=24;
 }
-
