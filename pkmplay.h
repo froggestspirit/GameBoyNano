@@ -1,12 +1,13 @@
 void executeCommand(u8 channel){//the code to figure out what bytes do what actions
-	curCommand=song[trackPos[channel]];
+	songFile.seek(trackPos[channel]+songAddress);
+	curCommand=songFile.read();
 	if(curCommand<0xD0){//notes
-		trackNoteLength[channel]+=(((curCommand&0x0F)+1)*trackSpeed[channel])*10;
+		trackNoteLength[channel]+=(((curCommand&0x0F)+1)*trackSpeed[channel])<<4;
 		trackVibratoState[channel]|=2;
 		trackVibratoDelayTimer[channel]=trackVibratoDelay[channel];
 		if(curCommand>0x0F){//note
 			trackNote[channel]=(curCommand>>4)-1;
-			NRxFreq[channel]=freqTableGB[((7-trackOctave[channel])*12)+trackNote[channel]]+trackTone[channel];
+			NRxFreq[channel]=freqTableGB[(((7-trackOctave[channel])*12)+trackNote[channel])+trackNoteOffset[channel]]+trackTone[channel];
 			if(channel!=2){
 				writeNRx2(channel,trackEnvelope[channel]);
 			}else{
@@ -34,25 +35,29 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 			break;
 			case 0xD8://note length + intensity
 				trackPos[channel]++;
-				trackSpeed[channel]=song[trackPos[channel]];
+				trackSpeed[channel]=songFile.read();
 			case 0xDC://intensity
-				trackPos[channel]++;
-				trackEnvelope[channel]=song[trackPos[channel]];
-				if(channel==2) writeWAV(trackEnvelope[2]&0x0F);
+        if(channel<3){
+				  trackPos[channel]++;
+  				trackEnvelope[channel]=songFile.read();
+  				if(channel==2) writeWAV(trackEnvelope[2]&0x0F);
+        }
 			break;
 			case 0xD9://set starting octave
 				trackPos[channel]++;
+				curCommand=songFile.read();
+				trackNoteOffset[channel]=(curCommand&0x0F)-((curCommand>>4)*12);
 			break;
 			case 0xDA://tempo
 				trackPos[channel]++;
-				tempo=(song[trackPos[channel]]<<8);
+				tempo=(songFile.read()<<8);
 				trackPos[channel]++;
-				tempo+=song[trackPos[channel]];
+				tempo+=songFile.read();
 			break;
 			case 0xDB://duty cycle
 				trackPos[channel]++;
 				if(channel<2){
-					NRx1Duty[channel]=song[trackPos[channel]];
+					NRx1Duty[channel]=songFile.read();
 					trackUseArpDuty[channel]=false;
 				}
 			break;
@@ -62,11 +67,11 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 			case 0xDE://sfx duty
 				trackPos[channel]++;
 				if(channel<2){
-					curCommand=song[trackPos[channel]];
-					trackArpDuty[(channel*4)]=(curCommand>>6);
-					trackArpDuty[(channel*4)+1]=(curCommand>>4)&3;
-					trackArpDuty[(channel*4)+2]=(curCommand>>2)&3;
-					trackArpDuty[(channel*4)+3]=(curCommand&3);
+					curCommand=songFile.read();
+					trackArpDuty[(channel<<2)]=(curCommand>>6);
+					trackArpDuty[(channel<<2)+1]=(curCommand>>4)&3;
+					trackArpDuty[(channel<<2)+2]=(curCommand>>2)&3;
+					trackArpDuty[(channel<<2)+3]=(curCommand&3);
 					trackUseArpDuty[channel]=true;
 				}
 			break;
@@ -75,13 +80,15 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 			break;
 			case 0xE0://pitch wheel
 				trackPos[channel]++;
+				songFile.read();
 				trackPos[channel]++;
+				songFile.read();
 			break;
 			case 0xE1://vibrato
 				trackPos[channel]++;
-				trackVibratoDelay[channel]=trackVibratoDelayTimer[channel]=song[trackPos[channel]];
+				trackVibratoDelay[channel]=trackVibratoDelayTimer[channel]=songFile.read();
 				trackPos[channel]++;
-				curCommand=song[trackPos[channel]];
+				curCommand=songFile.read();
 				trackVibratoSpeed[channel]=(curCommand&0x0F);
 				trackVibratoDepth[channel]=trackVibratoTimer[channel]=(curCommand>>4);
 				trackVibratoDepthAdd[channel]=trackVibratoDepthSub[channel]=(trackVibratoDepth[channel]>>1);
@@ -101,9 +108,9 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 			break;
 			case 0xE6://tone
 				trackPos[channel]++;
-				trackTone[channel]+=(song[trackPos[channel]]<<8);
+				trackTone[channel]+=(songFile.read()<<8);
 				trackPos[channel]++;
-				trackTone[channel]+=song[trackPos[channel]];
+				trackTone[channel]+=songFile.read();
 			break;
 			case 0xE7://unused
 
@@ -113,9 +120,9 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 			break;
 			case 0xE9://global tempo
 				trackPos[channel]++;
-				tempo+=(song[trackPos[channel]]<<8);
+				tempo+=(songFile.read()<<8);
 				trackPos[channel]++;
-				tempo+=song[trackPos[channel]];
+				tempo+=songFile.read();
 
 			break;
 			case 0xEA://restart current channel from header
@@ -135,6 +142,7 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 			break;
 			case 0xEF://stereo panning
 				trackPos[channel]++;
+				songFile.read();
 			break;
 			case 0xF0://sfx noise sampling
 
@@ -174,21 +182,22 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 			break;
 			case 0xFC://jump
 				trackPos[channel]++;
-				trackLoopTo[channel]=song[trackPos[channel]];
+				trackLoopTo[channel]=songFile.read();
 				trackPos[channel]++;
-				trackLoopTo[channel]+=(song[trackPos[channel]]<<8)-0x4001;
+				trackLoopTo[channel]+=(songFile.read()<<8)-(songOffset+1);
 				trackPos[channel]=trackLoopTo[channel];
 			break;
 			case 0xFD://loop
 				trackPos[channel]++;
+				curCommand=songFile.read();
 				if(!trackLooping[channel]){
-					trackLoopNumber[channel]=song[trackPos[channel]];
+					trackLoopNumber[channel]=curCommand;
 					if(trackLoopNumber[channel]>0) trackLooping[channel]=true;//don't set if it's an infinite loop
 				}
 				trackPos[channel]++;
-				trackLoopTo[channel]=song[trackPos[channel]];
+				trackLoopTo[channel]=songFile.read();
 				trackPos[channel]++;
-				trackLoopTo[channel]+=(song[trackPos[channel]]<<8)-0x4001;
+				trackLoopTo[channel]+=(songFile.read()<<8)-(songOffset+1);
 				trackLoopNumber[channel]--;
 				if(!trackLooping[channel]){//infinite loop
 					trackPos[channel]=trackLoopTo[channel];
@@ -200,9 +209,9 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 			break;
 			case 0xFE://call
 				trackPos[channel]++;
-				trackLoopTo[channel]=song[trackPos[channel]];
+				trackLoopTo[channel]=songFile.read();
 				trackPos[channel]++;
-				trackLoopTo[channel]+=(song[trackPos[channel]]<<8)-0x4001;
+				trackLoopTo[channel]+=(songFile.read()<<8)-(songOffset+1);
 				trackRetPos[channel]=trackPos[channel];
 				trackPos[channel]=trackLoopTo[channel];
 			break;
@@ -247,8 +256,13 @@ void playerProcess(u8 channel){//main engine code
 				trackVibratoDelayTimer[channel]--;
 			}
 		}
-		NRxFreq[channel]&=0x7FF;
-		CHFreq[channel]=GetFreq(NRxFreq[channel]);
+    if(channel<3){
+  		NRxFreq[channel]&=0x7FF;
+  		CHFreq[channel]=getFreq(NRxFreq[channel]);
+    }else{
+      NRxFreq[3]&=0xFF;
+      CHFreq[3]=getNSEFreq(NRxFreq[3]);
+    }
 		
 	}
 	trackNoteLength[channel]-=24;
