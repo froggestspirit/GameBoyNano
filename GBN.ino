@@ -6,15 +6,31 @@ typedef signed short s16;
 typedef signed long s32;
 
 const u8 PRECISION_DEPTH=12;
+const u8 PRECISION_DEPTHP3=PRECISION_DEPTH+3;
 const u16 PRECISION_SCALER=(1<<PRECISION_DEPTH);
-const u8 GLOBAL_DIVIDE=92;
+const u8 GLOBAL_DIVIDE=125;
 const u32 GLOBAL_TIMER=(1000000/GLOBAL_DIVIDE);
 const u32 FRAME_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/30;
 const u32 FRAME_SEQ_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/256;
 
+const u32 SONG_POINTERS=0xE9071;
+const u8 TOTAL_SONGS=201;
+
+u8 curSong;
+u32 songAddress;
+u16 songOffset;
+
+#include <SD.h>
+
+File songFile;
+const int chipSelect = 4;
+const int buttonNext = 2;
+bool buttonNextState;
+bool buttonNextLState;
+
 #include "tables.h"
 #include "freqtable.h"
-#include "song.h"
+#include "lfsr.h"
 
 volatile u8 outputL;
 volatile u8 outputR;
@@ -30,7 +46,7 @@ bool NR10Negate;
 u8 NR10Shift;
 u8 NRx1Duty[2];//only the first 2 channels use this
 u8 NRx1Length[4];//6-bit for channels 1,2,4. 8-bit for channel 3
-u8 NRx2Decay[4];
+u8 NRx2Decay[4];//used for channels 1,2 and 4. channel 4 is index "2", not "3"
 u8 NRx2Velocity[4];
 u8 NRx2Timer[4];
 u8 NRx2Volume[4];
@@ -63,6 +79,7 @@ bool trackLooping[4];
 u16 trackDelay[4];//time before next event is read
 u16 trackTone[4];
 u8 trackNote[4];
+s8 trackNoteOffset[4];
 u8 trackEnvelope[4];
 u8 trackSpeed[4];
 u8 trackOctave[4];
@@ -82,8 +99,12 @@ u8 trackVibratoTimer[4];
 u8 trackVibratoState[4];
 bool trackDone[4];//track is done playing
 
-u32 GetFreq(u16 gbFreq){
-	return pgm_read_word_near(freqTable + gbFreq);
+u32 getFreq(u16 gbFreq){
+  return pgm_read_word_near(freqTable + gbFreq);
+}
+
+u32 getNSEFreq(u8 gbFreq){
+  return pgm_read_word_near(freqNSETable + gbFreq);
 }
 
 void initPlayer(){//set up the variables for starting a song
@@ -109,6 +130,7 @@ void initPlayer(){//set up the variables for starting a song
 		trackDelay[i]=0;
 		trackTone[i]=0;
 		trackNote[i]=0;
+		trackNoteOffset[i]=0;
 		trackEnvelope[i]=0;
 		trackSpeed[i]=1;
 		trackOctave[i]=0;
@@ -143,6 +165,16 @@ void initPlayer(){//set up the variables for starting a song
 	playing=false;
 	tempo=0x0100;
 	curCommand=0;
+	songFile.seek(SONG_POINTERS+(curSong*3));
+  songAddress=0;
+  songOffset=0;
+  songAddress=(songFile.read());
+  songAddress*=(0x4000);
+	songAddress+=(songFile.read());
+	songAddress+=(songFile.read())*0x100;
+	songOffset=(songAddress & 0x3FFF)+0x4000;
+	songAddress-=0x4000;
+	songFile.seek(songAddress);
 }
 
 void writeNR10(u8 value){//sweep for channel 1
@@ -171,50 +203,69 @@ void writeWAV(u8 index){//copies waveform to the WAV buffer
 
 #include "pkmplay.h"
 
-int main() {
+void setup() {
 	//Serial.begin(9600);
-	asm("cli");
-	CLKPR = 0x80;
-	CLKPR = 0x80;
-
-	DDRC = 0x12;
-	DDRD = 0xff;
-
-
-	TCCR0A = 0x02;
-	TCCR0B = 0x02;	// 1000000 MHz
-	OCR0A = GLOBAL_DIVIDE;
-
-	TCCR2A=0b10100011;
-	TCCR2B=0b00000001;
-
-	TIMSK0 = 0x02;
-
-	asm("sei");
-	frame=0;
-	frameSeq=0;
-	frameSeqFrame=0;
-	initPlayer();
-	trackDone[3]=true;//disable channel 4 for now
-
-	while(1){
-
+	pinMode(SS, OUTPUT);
+  buttonNextState=false;
+  buttonNextLState=false;
+	SD.begin(chipSelect);
+ 
+	songFile = SD.open("crystal.gbc");
+	if(songFile){
+		frame=0;
+		frameSeq=0;
+		frameSeqFrame=0;
+		curSong=0;
+		initPlayer();
 	}
+  asm("cli");
+  CLKPR = 0x80;
+  CLKPR = 0x80;
+
+  DDRC = 0x12;
+  DDRD = 0xff;
+
+
+  TCCR0A = 0x02;
+  TCCR0B = 0x02;  // 1000000 MHz
+  OCR0A = GLOBAL_DIVIDE;
+
+  TCCR2A=0b10100011;
+  TCCR2B=0b00000001;
+
+  TIMSK0 = 0x02;
+  asm("sei");
+  pinMode(buttonNext, INPUT);
+}
+
+void loop(){
+  
 }
 
 ISR(TIMER0_COMPA_vect){
 	OCR2B=outputL;
   if(frame>=FRAME_MINUS){// called at ~60Hz
+    //buttonNextLState=buttonNextState;
+    //buttonNextState=digitalRead(buttonNext);
+    if(digitalRead(buttonNext)){
+      curSong++;
+      curSong%=TOTAL_SONGS;
+      initPlayer();
+    }
 		//sequencer code
 		if(!playing){
-			trackPos[0]=(song[1]+(song[2]<<8))-0x4000;
-			trackPos[1]=(song[4]+(song[5]<<8))-0x4000;
-			trackPos[2]=(song[7]+(song[8]<<8))-0x4000;
-			//trackPos[3]=(song[10]+(song[11]<<8))-0x4000;
+			songFile.read();//skip a byte (this tells number of channels)
+			trackPos[0]=(songFile.read()+(songFile.read()<<8))-songOffset;
+			songFile.read();//skip a byte
+			trackPos[1]=(songFile.read()+(songFile.read()<<8))-songOffset;
+			songFile.read();//skip a byte
+			trackPos[2]=(songFile.read()+(songFile.read()<<8))-songOffset;
+			songFile.read();//skip a byte
+			trackPos[3]=(songFile.read()+(songFile.read()<<8))-songOffset;
 			playing=true;
 		}else{
 			for(u8 i=0; i<4; i++){
-				if(trackDone[i]==false){
+				if(!trackDone[i]){
 				   playerProcess(i);
 				}
 			}
@@ -222,8 +273,8 @@ ISR(TIMER0_COMPA_vect){
 		frame-=FRAME_MINUS;
 	}
 	if(frameSeq>=FRAME_SEQ_MINUS){// called at ~512Hz
-		//Frame sequence code
-		if((frameSeqFrame&1)==0){//length counter
+		//Frame sequence code Disabled for now to speed up
+		/*if((frameSeqFrame&1)==0){//length counter
 			for(u8 channel=0; channel<4; channel++){
 				if(NRx4LenEn[channel]==1){
 					if(NRx1Length[channel]>0){
@@ -236,10 +287,10 @@ ISR(TIMER0_COMPA_vect){
 					}
 				}
 			}
-		}
+		}*/
 
 		if((frameSeqFrame&7)==7){//envelope counter
-			for(u8 channel=0; channel<4; channel++){
+			for(u8 channel=0; channel<3; channel++){
 				if(NRx2Timer[channel]!=0){
 					NRx2Timer[channel]--;
 					if(NRx2Timer[channel]==0){
@@ -259,25 +310,32 @@ ISR(TIMER0_COMPA_vect){
 			}
 		}
 
-		if((frameSeqFrame&3)==2){//sweep counter
+		//if((frameSeqFrame&3)==2){//sweep counter
 
-		}
+		//}
 
 		frameSeqFrame++;
 		frameSeq-=FRAME_SEQ_MINUS;
 	}
-  outputL=0;
-	u8 chWavPos=dutyTable[((CHFPos[0]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[0]*8)];
-	outputL+=(chWavPos*NRx2Volume[0]*CHENL[0]);
-	chWavPos=dutyTable[((CHFPos[1]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[1]*8)];
-	outputL+=(chWavPos*NRx2Volume[1]*CHENL[1]);
+  	outputL=0;
+	u8 chWavPos=dutyTable[((CHFPos[0]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[0]<<3)];
+	if(CHENL[0]) outputL+=(NRx2Volume[0]*chWavPos);
+	chWavPos=dutyTable[((CHFPos[1]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[1]<<3)];
+	if(CHENL[1]) outputL+=(NRx2Volume[1]*chWavPos);
 	chWavPos=WAV[((CHFPos[2]>>PRECISION_DEPTH)&0b00011111)];
 	chWavPos=(chWavPos >> waveShift[NR32Volume]);
-	outputL+=(chWavPos*CHENL[2]*NR30DAC);
+	if(CHENL[2]) outputL+=(chWavPos*NR30DAC);
+	if(NRxFreq[3]&8==8){//7-stage
+	    chWavPos=pgm_read_byte_near(lfsr7+((CHFPos[3]>>PRECISION_DEPTHP3)&0x0F));
+	}else{//15-stage
+	    chWavPos=pgm_read_byte_near(lfsr15+((CHFPos[3]>>PRECISION_DEPTHP3)&0x0FFF));
+	}
+	chWavPos=(chWavPos>>(7-((CHFPos[3]>>PRECISION_DEPTH)&7)))&1;
+	if(CHENL[3]) outputL+=(NRx2Volume[2]*chWavPos);
 	CHFPos[0]+=CHFreq[0];
 	CHFPos[1]+=CHFreq[1];
-	CHFPos[2]+=CHFreq[2]*2;
-	//outputL+=(NRx2Volume[3]*CHENL[3]);
+	CHFPos[2]+=CHFreq[2]<<1;
+  	CHFPos[3]+=CHFreq[3];
 	frame+=PRECISION_SCALER;
 	frameSeq+=PRECISION_SCALER;
 }
