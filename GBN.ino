@@ -14,6 +14,10 @@ const u32 FRAME_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/30;
 const u32 FRAME_SEQ_MINUS=(GLOBAL_TIMER*PRECISION_SCALER)/256;
 
 const u32 SONG_POINTERS=0xE9071;
+const u32 DRUMKIT_POINTERS=0xE8E5E;
+const u32 DRUMKIT_DATA=0xE8EFA;//so we can get the size of the drumkit pointers
+const u32 DRUMKIT_END=0xE8FC2;//so we can get the size of the drumkits
+const u32 WAVEFORM_POINTERS=0xE8DB2;
 const u8 TOTAL_SONGS=201;
 
 u8 curSong;
@@ -62,10 +66,11 @@ u8 NR51;
 u8 NR52;
 bool CHENL[4];
 bool CHENR[4];
-u32 CHFPos[4];
-u32 CHFreq[4];
+u8 CHFPos8[6] asm("CHFPos8") __attribute__ ((used)) ;//5th and 6th ones are for the noise channel
+u32 CHFPos[4] asm("CHFPos") __attribute__ ((used)) ;
+u32 CHFreq[4] asm("CHFreq") __attribute__ ((used)) ;
 
-u8 WAV[32];
+u8 WAV[32] asm("WAV") __attribute__ ((used)) ;
 
 //sequencer variables
 bool playing;
@@ -86,9 +91,6 @@ u8 trackOctave[4];
 s16 trackNoteLength[4];
 u8 trackArpDuty[4*4];
 bool trackUseArpDuty[4];
-//trackPitch[4];
-//trackNotePitch[4];
-//trackFinalPitch[4];
 u8 trackVibratoDepth[4];
 u8 trackVibratoDepthAdd[4];
 u8 trackVibratoDepthSub[4];
@@ -98,13 +100,16 @@ u8 trackVibratoDelayTimer[4];
 u8 trackVibratoTimer[4];
 u8 trackVibratoState[4];
 bool trackDone[4];//track is done playing
+u8 drumIndex;//where the drumdata array is
+u8 drumTimer;//delays for the drums
+u8 drumSet;//FF if not initialized
 
 u32 getFreq(u16 gbFreq){
-  return pgm_read_word_near(freqTable + gbFreq);
+	return pgm_read_word_near(freqTable + gbFreq);
 }
 
 u32 getNSEFreq(u8 gbFreq){
-  return pgm_read_word_near(freqNSETable + gbFreq);
+	return pgm_read_word_near(freqNSETable + gbFreq);
 }
 
 void initPlayer(){//set up the variables for starting a song
@@ -162,14 +167,17 @@ void initPlayer(){//set up the variables for starting a song
 	NR51=0;
 	NR52=0;
 	for(int i=0; i<32; i++) WAV[i]=0;
+	drumTimer=0;
+	drumIndex=0;
+	drumSet=0xFF;
 	playing=false;
 	tempo=0x0100;
 	curCommand=0;
 	songFile.seek(SONG_POINTERS+(curSong*3));
-  songAddress=0;
-  songOffset=0;
-  songAddress=(songFile.read());
-  songAddress*=(0x4000);
+	songAddress=0;
+	songOffset=0;
+	songAddress=(songFile.read());
+	songAddress*=(0x4000);
 	songAddress+=(songFile.read());
 	songAddress+=(songFile.read())*0x100;
 	songOffset=(songAddress & 0x3FFF)+0x4000;
@@ -198,7 +206,27 @@ u8 readNRx2(u8 channel){//envelope, channels 1,2, and 4. 3 is unused here
 }
 
 void writeWAV(u8 index){//copies waveform to the WAV buffer
-	for(u8 i=0; i<32; i++) WAV[i]=waveTable[(index*32)+i];
+	for(u8 i=0; i<16; i++){
+		WAV[i*2]=waveTable[index+i]>>4;
+		WAV[(i*2)+1]=waveTable[index+i]&0x0F;
+	}
+}
+
+void loadInstruments(){
+	songFile.seek(WAVEFORM_POINTERS);
+	for(int i=0; i<160; i++){
+		waveTable[i]=songFile.read();
+	}
+	songFile.seek(DRUMKIT_POINTERS);
+	u16 temp=0;
+	for(int i=0; i<78; i++){
+		temp=songFile.read();
+		temp+=(songFile.read()<<8);		
+		drumTable[i]=temp-((DRUMKIT_DATA&0x3FFF)+0x4000);//should offset drum data to 0 for the array
+	}
+	for(int i=0; i<200; i++){
+		drumData[i]=songFile.read();
+	}
 }
 
 #include "pkmplay.h"
@@ -206,8 +234,8 @@ void writeWAV(u8 index){//copies waveform to the WAV buffer
 void setup() {
 	//Serial.begin(9600);
 	pinMode(SS, OUTPUT);
-  buttonNextState=false;
-  buttonNextLState=false;
+	buttonNextState=false;
+	buttonNextLState=false;
 	SD.begin(chipSelect);
  
 	songFile = SD.open("crystal.gbc");
@@ -215,27 +243,28 @@ void setup() {
 		frame=0;
 		frameSeq=0;
 		frameSeqFrame=0;
-		curSong=0;
+		curSong=2;
+		loadInstruments();
 		initPlayer();
 	}
-  asm("cli");
-  CLKPR = 0x80;
-  CLKPR = 0x80;
+	asm("cli");
+	CLKPR = 0x80;
+	CLKPR = 0x80;
 
-  DDRC = 0x12;
-  DDRD = 0xff;
+	DDRC |= 0x12;
+	DDRD |= 0x08;
 
 
-  TCCR0A = 0x02;
-  TCCR0B = 0x02;  // 1000000 MHz
-  OCR0A = GLOBAL_DIVIDE;
+	TCCR0A = 0x02;
+	TCCR0B = 0x02;  // 1000000 MHz
+	OCR0A = GLOBAL_DIVIDE;
 
-  TCCR2A=0b10100011;
-  TCCR2B=0b00000001;
+	TCCR2A=0b10100011;
+	TCCR2B=0b00000001;
 
-  TIMSK0 = 0x02;
-  asm("sei");
-  pinMode(buttonNext, INPUT);
+	TIMSK0 = 0x02;
+	asm("sei");
+	//pinMode(buttonNext, INPUT);
 }
 
 void loop(){
@@ -244,14 +273,14 @@ void loop(){
 
 ISR(TIMER0_COMPA_vect){
 	OCR2B=outputL;
-  if(frame>=FRAME_MINUS){// called at ~60Hz
-    //buttonNextLState=buttonNextState;
-    //buttonNextState=digitalRead(buttonNext);
-    if(digitalRead(buttonNext)){
-      curSong++;
-      curSong%=TOTAL_SONGS;
-      initPlayer();
-    }
+	if(frame>=FRAME_MINUS){// called at ~60Hz
+		//buttonNextLState=buttonNextState;
+		//buttonNextState=digitalRead(buttonNext);
+		if(PIND&4==0){
+			curSong++;
+			curSong%=TOTAL_SONGS;
+			initPlayer();
+		}
 		//sequencer code
 		if(!playing){
 			songFile.read();//skip a byte (this tells number of channels)
@@ -263,11 +292,15 @@ ISR(TIMER0_COMPA_vect){
 			songFile.read();//skip a byte
 			trackPos[3]=(songFile.read()+(songFile.read()<<8))-songOffset;
 			playing=true;
+			//Serial.println(trackPos[0],HEX);
 		}else{
-			for(u8 i=0; i<4; i++){
+			for(u8 i=0; i<3; i++){
 				if(!trackDone[i]){
 				   playerProcess(i);
 				}
+			}
+			if(!trackDone[3]){
+				playerProcessNSE();
 			}
 		}
 		frame-=FRAME_MINUS;
@@ -317,25 +350,63 @@ ISR(TIMER0_COMPA_vect){
 		frameSeqFrame++;
 		frameSeq-=FRAME_SEQ_MINUS;
 	}
-  	outputL=0;
-	u8 chWavPos=dutyTable[((CHFPos[0]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[0]<<3)];
+	outputL=0;
+	asm volatile (//this makes the multiple bit shifts for precision more optimal
+		"ldi r27, hi8(CHFPos+1)\n\t"
+		"ldi r26, lo8(CHFPos+1)\n\t"
+		"ldi r31, hi8(CHFPos8)\n\t"
+		"ldi r30, lo8(CHFPos8)\n\t"
+		"ld r25, x\n\t"
+		"swap r25\n\t"
+		"andi r25,7\n\t"
+		"st z+, r25\n\t"
+		"adiw r26,4\n\t"
+		"ld r25, x\n\t"
+		"swap r25\n\t"
+		"andi r25,7\n\t"
+		"st z+, r25\n\t"
+		"adiw r26,5\n\t"
+		"ld r25, x\n\t"
+		"ror r25\n\t"
+		"ld r25, -x\n\t"
+		"ror r25\n\t"
+		"lsr r25\n\t"
+		"lsr r25\n\t"
+		"lsr r25\n\t"
+		"st z+, r25\n\t"
+		"adiw r26,4\n\t"
+		"ld r25, x+\n\t"
+		"rol r25\n\t"
+		"ld r25, x+\n\t"
+		"rol r25\n\t"
+		"st z+, r25\n\t"
+		"ld r25, x\n\t"
+		"rol r25\n\t"
+		"st z+, r25\n\t"
+		"ld r25, -x\n\t"
+		"ld r25, -x\n\t"
+		"swap r25\n\t"
+		"andi r25,7\n\t"
+		"st z, r25\n\t"
+	);
+	u8 chWavPos=dutyTable[CHFPos8[0]+NRx1Duty[0]];
 	if(CHENL[0]) outputL+=(NRx2Volume[0]*chWavPos);
-	chWavPos=dutyTable[((CHFPos[1]>>PRECISION_DEPTH)&0b00000111)+(NRx1Duty[1]<<3)];
+	chWavPos=dutyTable[CHFPos8[1]+NRx1Duty[1]];
 	if(CHENL[1]) outputL+=(NRx2Volume[1]*chWavPos);
-	chWavPos=WAV[((CHFPos[2]>>PRECISION_DEPTH)&0b00011111)];
+	chWavPos=WAV[CHFPos8[2]];
 	chWavPos=(chWavPos >> waveShift[NR32Volume]);
 	if(CHENL[2]) outputL+=(chWavPos*NR30DAC);
 	if(NRxFreq[3]&8==8){//7-stage
-	    chWavPos=pgm_read_byte_near(lfsr7+((CHFPos[3]>>PRECISION_DEPTHP3)&0x0F));
+		chWavPos=pgm_read_byte_near(lfsr7+(CHFPos8[3]&0x0F));
 	}else{//15-stage
-	    chWavPos=pgm_read_byte_near(lfsr15+((CHFPos[3]>>PRECISION_DEPTHP3)&0x0FFF));
+		chWavPos=pgm_read_byte_near(lfsr15+((CHFPos8[3]+(CHFPos8[4]<<8))&0x0FFF));
 	}
-	chWavPos=(chWavPos>>(7-((CHFPos[3]>>PRECISION_DEPTH)&7)))&1;
+	chWavPos=(chWavPos>>(7-CHFPos8[5]))&1;
 	if(CHENL[3]) outputL+=(NRx2Volume[2]*chWavPos);
 	CHFPos[0]+=CHFreq[0];
 	CHFPos[1]+=CHFreq[1];
 	CHFPos[2]+=CHFreq[2]<<1;
-  	CHFPos[3]+=CHFreq[3];
+	CHFPos[3]+=CHFreq[3];
 	frame+=PRECISION_SCALER;
 	frameSeq+=PRECISION_SCALER;
 }
