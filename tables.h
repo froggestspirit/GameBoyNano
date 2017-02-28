@@ -1,21 +1,15 @@
-const u8 dutyTable[] = {//waveforms for channels 1 and 2.
+const u8 dutyTable[]  asm("dutyTable") __attribute__ ((used)) = {//waveforms for channels 1 and 2.
 	0, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 0, 0, 1,
 	1, 0, 0, 0, 0, 1, 1, 1,
 	0, 1, 1, 1, 1, 1, 1, 0
 };
-const u8 waveTable[] = {//the waveforms to choose from, each is 32 bytes, ranging from 0-15. More can be added.
-	0, 2, 4, 6, 8, 10, 12, 14, 15, 15, 15, 14, 14, 13, 13, 12, 12, 11, 10, 9, 8, 7, 6, 5, 4, 4, 3, 3, 2, 2, 1, 1,
-	0, 2, 4, 6, 8, 10, 12, 14, 14, 15, 15, 15, 15, 14, 14, 14, 13, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 2, 1, 1,
-	1, 3, 6, 9, 11, 13, 14, 14, 14, 14, 15, 15, 15, 15, 14, 13, 13, 14, 15, 15, 15, 15, 14, 14, 14, 14, 13, 11, 9, 6, 3, 1,
-	0, 2, 4, 6, 8, 10, 12, 13, 14, 15, 15, 14, 13, 14, 15, 15, 14, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 13, 14, 14, 15, 7, 7, 15, 14, 14, 13, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-	0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 3, 3, 2, 2, 1, 1, 15, 15, 14, 14, 12, 12, 10, 10, 8, 8, 10, 10, 12, 12, 14, 14,
-	0, 2, 4, 6, 8, 10, 12, 14, 12, 11, 10, 9, 8, 7, 6, 5, 15, 15, 15, 14, 14, 13, 13, 12, 4, 4, 3, 3, 2, 2, 1, 1,
-	12, 0, 10, 9, 8, 7, 15, 5, 15, 15, 15, 14, 14, 13, 13, 12, 4, 4, 3, 3, 2, 2, 15, 1, 0, 2, 4, 6, 8, 10, 12, 14,
-	4, 4, 3, 3, 2, 2, 1, 15, 0, 0, 4, 6, 8, 10, 12, 14, 15, 8, 15, 14, 14, 13, 13, 12, 12, 11, 10, 9, 8, 7, 6, 5,
-	1, 1, 0, 0, 0, 0, 0, 8, 0, 0, 1, 3, 5, 7, 9, 10, 11, 4, 11, 10, 10, 9, 9, 8, 8, 7, 6, 5, 4, 3, 2, 1
-};
+u8 waveTable[160];//the waveforms to choose from, each is 32 bytes, ranging from 0-15. More can be added.
+
+u8 drumTable[78];//the drum pointers
+
+u8 drumData[200];//the drum data must be less than 256 bytes if using 8-bit pointers
+
 const u8 waveShift[] = {//for volume control.
 	4, 0, 1, 2
 };
@@ -25,7 +19,7 @@ const u8 lengthLoadMask[] = {//for length-enabled notes. all channels except 3 u
 const u8 NR52Mask[] = {//for disabling specific channels when length expires.
 	0b01110111, 0b10111011, 0b11011101, 0b11101110
 };
-const u16 freqTableGB[] = {//starting with C3, one for each note the gameboy can handle.
+const u16 freqTableGB[] PROGMEM = {//starting with C3, one for each note the gameboy can handle.
 	  44, 156, 262, 363, 457, 547, 631, 710, 786, 854, 923, 986,
 	1046,1102,1155,1205,1253,1297,1339,1379,1417,1452,1486,1517,
 	1546,1575,1602,1627,1650,1673,1694,1714,1732,1750,1767,1783,
