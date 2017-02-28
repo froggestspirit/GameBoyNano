@@ -2,7 +2,7 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 	songFile.seek(trackPos[channel]+songAddress);
 	curCommand=songFile.read();
 	if(curCommand<0xD0){//notes
-    trackNoteLength[channel]+=((((curCommand&0x0F)+1)*trackSpeed[channel])&0xFF)*tempo;
+    		trackNoteLength[channel]+=((((curCommand&0x0F)+1)*trackSpeed[channel])&0xFF)*tempo;
 		trackVibratoState[channel]|=2;
 		trackVibratoDelayTimer[channel]=trackVibratoDelay[channel];
 		if(curCommand>0x0F){//note
