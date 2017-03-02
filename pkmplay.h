@@ -2,7 +2,7 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 	songFile.seek(trackPos[channel]+songAddress);
 	curCommand=songFile.read();
 	if(curCommand<0xD0){//notes
-    		trackNoteLength[channel]+=((((curCommand&0x0F)+1)*trackSpeed[channel])&0xFF)*tempo;
+    trackNoteLength[channel]+=((((curCommand&0x0F)+1)*trackSpeed[channel])&0xFF)*tempo;
 		trackVibratoState[channel]|=2;
 		trackVibratoDelayTimer[channel]=trackVibratoDelay[channel];
 		if(curCommand>0x0F){//note
@@ -200,6 +200,8 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 				trackLoopNumber[channel]--;
 				if(!trackLooping[channel]){//infinite loop
 					trackPos[channel]=trackLoopTo[channel];
+					trackLooped[channel]++;
+					if(trackLooped[channel]==2) tracksComplete|=(1<<channel);
 				}else if(trackLoopNumber[channel]>0){
 					trackPos[channel]=trackLoopTo[channel];
 				}else{
@@ -221,6 +223,7 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 				}else{
 					trackDone[channel]=true;
 					CHENL[channel]=CHENR[channel]=0;
+					tracksComplete|=(1<<channel);
 				}
 			break;
 		}
@@ -394,6 +397,8 @@ void executeCommandNSE(){//the code to figure out what bytes do what actions in 
 				trackLoopNumber[3]--;
 				if(!trackLooping[3]){//infinite loop
 					trackPos[3]=trackLoopTo[3];
+					trackLooped[3]++;
+					if(trackLooped[3]==2) tracksComplete|=(8);
 				}else if(trackLoopNumber[3]>0){
 					trackPos[3]=trackLoopTo[3];
 				}else{
@@ -415,6 +420,7 @@ void executeCommandNSE(){//the code to figure out what bytes do what actions in 
 				}else{
 					trackDone[3]=true;
 					CHENL[3]=CHENR[3]=0;
+					tracksComplete|=(8);
 				}
 			break;
 		}
