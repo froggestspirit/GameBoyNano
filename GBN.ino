@@ -18,7 +18,7 @@ const u32 DRUMKIT_POINTERS=0xE8E5E;
 const u32 DRUMKIT_DATA=0xE8EFA;//so we can get the size of the drumkit pointers
 const u32 DRUMKIT_END=0xE8FC2;//so we can get the size of the drumkits
 const u32 WAVEFORM_POINTERS=0xE8DB2;
-const u8 TOTAL_SONGS=201;
+const u8 TOTAL_SONGS=102;
 
 u8 curSong;
 u32 songAddress;
@@ -76,6 +76,9 @@ u8 WAV[32] asm("WAV") __attribute__ ((used)) ;
 bool playing;
 u16 tempo;
 u8 curCommand;
+u8 trackLooped[4];//how many times the track looped, for limiting playback to 2 times before changing song
+u8 tracksComplete;//bits set for when a channel is ready to fade
+u8 fadeTimer;//timer for fading
 u16 trackPos[4];//position in the song array of each track
 u16 trackRetPos[4];//position in the song array of each track
 u16 trackLoopTo[4];
@@ -123,11 +126,12 @@ void initPlayer(){//set up the variables for starting a song
 		NRx4LenEn[i]=0;
 		NRx4Trigger[i]=0;
 		NRxFreq[i]=0;
-		CHENL[i]=1;
-		CHENR[i]=1;
+		CHENL[i]=0;
+		CHENR[i]=0;
 		CHFPos[i]=0;
 		CHFreq[i]=0;
-		trackPos[i]=0;
+		trackLooped[i]=0;
+ 		trackPos[i]=0;
 		trackRetPos[i]=0;
 		trackLoopTo[i]=0;
 		trackLoopNumber[i]=0xFF;
@@ -153,7 +157,7 @@ void initPlayer(){//set up the variables for starting a song
 		trackVibratoDelayTimer[i]=0;
 		trackVibratoTimer[i]=0;
 		trackVibratoState[i]=0;
-		trackDone[i]=false;
+		trackDone[i]=true;
 	}
 	NR10Period=0;
 	NR10Negate=0;
@@ -172,7 +176,7 @@ void initPlayer(){//set up the variables for starting a song
 	drumSet=0xFF;
 	playing=false;
 	tempo=0x0100;
-	curCommand=0;
+	fadeTimer=0x00;
 	songFile.seek(SONG_POINTERS+(curSong*3));
 	songAddress=0;
 	songOffset=0;
@@ -183,6 +187,22 @@ void initPlayer(){//set up the variables for starting a song
 	songOffset=(songAddress & 0x3FFF)+0x4000;
 	songAddress-=0x4000;
 	songFile.seek(songAddress);
+	curCommand=songFile.read();//(this tells number of channels)
+	curCommand=curCommand>>6;
+	curCommand++;
+	songFile.seek(songAddress);
+	tracksComplete=0x0F;
+	u8 i=0;
+	while(curCommand>0){
+		i=songFile.read();//track number
+		i&=3;
+		trackPos[i]=(songFile.read()+(songFile.read()<<8))-songOffset;
+		CHENL[i]=1;
+		CHENR[i]=1;
+		trackDone[i]=false;
+		tracksComplete^=(1<<i);
+		curCommand--;
+	}
 }
 
 void writeNR10(u8 value){//sweep for channel 1
@@ -243,7 +263,7 @@ void setup() {
 		frame=0;
 		frameSeq=0;
 		frameSeqFrame=0;
-		curSong=2;
+		curSong=0;
 		loadInstruments();
 		initPlayer();
 	}
@@ -272,36 +292,26 @@ void loop(){
 }
 
 ISR(TIMER0_COMPA_vect){
-	OCR2B=outputL;
+	OCR2B=(outputL >> (fadeTimer>>5));
 	if(frame>=FRAME_MINUS){// called at ~60Hz
-		//buttonNextLState=buttonNextState;
-		//buttonNextState=digitalRead(buttonNext);
-		if(PIND&4==0){
-			curSong++;
-			curSong%=TOTAL_SONGS;
-			initPlayer();
+		buttonNextLState=buttonNextState;
+		buttonNextState=(PIND&4);
+		if(tracksComplete==0x0F){
+			fadeTimer++;
+			if(fadeTimer>=0xF0){
+				curSong++;
+				curSong%=TOTAL_SONGS;
+				initPlayer();
+			}
 		}
 		//sequencer code
-		if(!playing){
-			songFile.read();//skip a byte (this tells number of channels)
-			trackPos[0]=(songFile.read()+(songFile.read()<<8))-songOffset;
-			songFile.read();//skip a byte
-			trackPos[1]=(songFile.read()+(songFile.read()<<8))-songOffset;
-			songFile.read();//skip a byte
-			trackPos[2]=(songFile.read()+(songFile.read()<<8))-songOffset;
-			songFile.read();//skip a byte
-			trackPos[3]=(songFile.read()+(songFile.read()<<8))-songOffset;
-			playing=true;
-			//Serial.println(trackPos[0],HEX);
-		}else{
-			for(u8 i=0; i<3; i++){
-				if(!trackDone[i]){
-				   playerProcess(i);
-				}
+		for(u8 i=0; i<3; i++){
+			if(!trackDone[i]){
+			   playerProcess(i);
 			}
-			if(!trackDone[3]){
-				playerProcessNSE();
-			}
+		}
+		if(!trackDone[3]){
+			playerProcessNSE();
 		}
 		frame-=FRAME_MINUS;
 	}
