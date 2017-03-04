@@ -58,6 +58,7 @@ bool NRx2Sign[4];
 bool NRx4LenEn[4];//length enable flag
 bool NRx4Trigger[4];//Trigger a note
 u16 NRxFreq[4];
+bool NR43Stage;//15 or 7 stage mode?
 u8 NR30DAC;
 u8 NR32Volume;
 u8 NR43;
@@ -66,7 +67,8 @@ u8 NR51;
 u8 NR52;
 bool CHENL[4];
 bool CHENR[4];
-u8 CHFPos8[6] asm("CHFPos8") __attribute__ ((used)) ;//5th and 6th ones are for the noise channel
+u8 CHFPos8[4] asm("CHFPos8") __attribute__ ((used)) ;
+u16 CHFPos8N asm("CHFPos8N") __attribute__ ((used)) ;
 u32 CHFPos[4] asm("CHFPos") __attribute__ ((used)) ;
 u32 CHFreq[4] asm("CHFreq") __attribute__ ((used)) ;
 
@@ -111,8 +113,12 @@ u32 getFreq(u16 gbFreq){
 	return pgm_read_word_near(freqTable + gbFreq);
 }
 
-u32 getNSEFreq(u8 gbFreq){
-	return pgm_read_word_near(freqNSETable + gbFreq);
+u32 getNSEFreq(u16 gbFreq){
+  gbFreq=gbFreq<<1;
+  u32 r=pgm_read_word_near(freqNSETable + gbFreq+1);
+  r=r<<16;
+  r+=pgm_read_word_near(freqNSETable + gbFreq);
+	return r;
 }
 
 void initPlayer(){//set up the variables for starting a song
@@ -126,6 +132,7 @@ void initPlayer(){//set up the variables for starting a song
 		NRx4LenEn[i]=0;
 		NRx4Trigger[i]=0;
 		NRxFreq[i]=0;
+		NR43Stage=0;
 		CHENL[i]=0;
 		CHENR[i]=0;
 		CHFPos[i]=0;
@@ -284,7 +291,6 @@ void setup() {
 
 	TIMSK0 = 0x02;
 	asm("sei");
-	//pinMode(buttonNext, INPUT);
 }
 
 void loop(){
@@ -301,6 +307,10 @@ ISR(TIMER0_COMPA_vect){
 			if(fadeTimer>=0xF0){
 				curSong++;
 				curSong%=TOTAL_SONGS;
+       //skip these to avoid glitches
+       if(curSong==31) curSong++;//after rival fight
+       if(curSong==73) curSong++;//wild battle night
+       if(curSong==75) curSong++;//wild victory 2
 				initPlayer();
 			}
 		}
@@ -379,35 +389,36 @@ ISR(TIMER0_COMPA_vect){
 		"swap r25\n\t"
 		"andi r25,7\n\t"
 		"st z+, r25\n\t"
-		"adiw r26,5\n\t"//increase by 5 here instead (pointing to CHPos+2 in channel 3 now)
+		"adiw r26,4\n\t"//increase by 5 here instead (pointing to CHPos+2 in channel 3 now)
 		
-		//goal here is CHPos8[2]=((CHPos>>12)&31) 00000000 00000001 11110000 00000000
+		//goal here is CHPos8[2]=((CHPos>>12)&31) 00000000 00000000 11111000 00000000
 		"ld r25, x\n\t"//load byte (the one with 1 bit we keep) into r25
-		"ror r25\n\t"//rotate bits right (puts that bit into carry
-		"ld r25, -x\n\t"//decrease x, then load it to r25
-		"ror r25\n\t"//rotate right (bit from carry comes into the new value, looks like 11111000 now
 		"lsr r25\n\t"//shift right 3 times
 		"lsr r25\n\t"
 		"lsr r25\n\t"
 		"st z+, r25\n\t"//store into CHPos8[2] for ch 3
-		"adiw r26,4\n\t"
+		"adiw r26,5\n\t"
 		
-		//goal here is CHPos8=(CHPos>>15) 00000222 21111111 10000000 00000000 bits marked 1 go into CHpos8[3], bits marked 2 go into CHPos8[4]
-		"ld r25, x+\n\t"//load byte, then increase pointer X by 1
-		"rol r25\n\t"//roll bits left, bit marked 1 is now in carry
-		"ld r25, x+\n\t"//load the next byte, and increase x again
-		"rol r25\n\t"//roll bits left again, all 1's are now in r25, and the 2 gets shifted to carry
-		"st z+, r25\n\t"//store this to CHpos8[3]
-		"ld r25, x\n\t"//load last byte
-		"rol r25\n\t"//roll bits left, should now look like 00002222
-		"st z+, r25\n\t"//store in CHpos8[4]
-		
-		//goal here is CHpos8[5]=((CHPos>>12)&7) //same as pulse channels, but this is so we can get the right noise bit
-		"ld r25, -x\n\t"//subtract 1 from x
-		"ld r25, -x\n\t"//subtract 1 from x and store into r25 (which now is CHPos+1 for channel 4)
-		"swap r25\n\t"//swap nibbles
+		//goal here is CHPos8[3]=((CHPos>>17)&7) //this is so we can get the right noise bit
+		"ld r25, x\n\t"
+		"lsr r25\n\t"
 		"andi r25,7\n\t"//only keep 3 lsb
-		"st z, r25\n\t"//store into CHpos8[5]
+		"st z, r25\n\t"//store into CHPos8[3]
+
+		//goal here is CHPos8N=(CHPos>>20) 22221111 11110000 00000000 00000000 bits marked 1 go into CHPos8N(low byte), bits marked 2 go into CHPos8N(high byte)
+		"ldi r31, hi8(CHFPos8N)\n\t"//set Z to point to CHPos8N
+		"ldi r30, lo8(CHFPos8N)\n\t"
+		"ld r25, x+\n\t"//load byte, then increase pointer X by 1
+		"ld r24, x\n\t"
+		"andi r24,15\n\t"
+		"or r25,r24\n\t"
+		"swap r25\n\t"
+		"st z+, r25\n\t"//store this to CHPos8N(low byte)
+		"ld r25, x\n\t"//load last byte
+		"swap r25\n\t"
+		"andi r25,15\n\t"//only keep 4 lsb
+		"st z, r25\n\t"//store in CHFPos8N(high byte)
+		
 	);
 	u8 chWavPos=dutyTable[CHFPos8[0]+NRx1Duty[0]];
 	if(CHENL[0]) outputL+=(NRx2Volume[0]*chWavPos);
@@ -416,16 +427,16 @@ ISR(TIMER0_COMPA_vect){
 	chWavPos=WAV[CHFPos8[2]];
 	chWavPos=(chWavPos >> waveShift[NR32Volume]);
 	if(CHENL[2]) outputL+=(chWavPos*NR30DAC);
-	if(NRxFreq[3]&8==8){//7-stage
-		chWavPos=pgm_read_byte_near(lfsr7+(CHFPos8[3]&0x0F));
+	if(NR43Stage==1){//7-stage
+		chWavPos=pgm_read_byte_near(lfsr7+(CHFPos8N&0x0F));
 	}else{//15-stage
-		chWavPos=pgm_read_byte_near(lfsr15+((CHFPos8[3]+(CHFPos8[4]<<8))&0x0FFF));
+		chWavPos=pgm_read_byte_near(lfsr15+CHFPos8N);
 	}
-	chWavPos=(chWavPos>>(7-CHFPos8[5]))&1;
+	chWavPos=(chWavPos>>(7-CHFPos8[3]))&1;
 	if(CHENL[3]) outputL+=(NRx2Volume[2]*chWavPos);
 	CHFPos[0]+=CHFreq[0];
 	CHFPos[1]+=CHFreq[1];
-	CHFPos[2]+=CHFreq[2]<<1;
+	CHFPos[2]+=CHFreq[2];
 	CHFPos[3]+=CHFreq[3];
 	frame+=PRECISION_SCALER;
 	frameSeq+=PRECISION_SCALER;
