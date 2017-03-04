@@ -362,42 +362,52 @@ ISR(TIMER0_COMPA_vect){
 	}
 	outputL=0;
 	asm volatile (//this makes the multiple bit shifts for precision more optimal
-		"ldi r27, hi8(CHFPos+1)\n\t"
+		"ldi r27, hi8(CHFPos+1)\n\t"//set X to point to CHPos+1
 		"ldi r26, lo8(CHFPos+1)\n\t"
-		"ldi r31, hi8(CHFPos8)\n\t"
+
+		"ldi r31, hi8(CHFPos8)\n\t"//set Z to point to CHPos8 (setting Y didn't work)
 		"ldi r30, lo8(CHFPos8)\n\t"
-		"ld r25, x\n\t"
+		
+		//goal here is CHPos8[0]=((CHPos>>12)&7) 00000000 00000000 01110000 00000000 bits marked 1 we keep, bits after 1 are for precision, and get temporarily discarded
+		"ld r25, x\n\t"//load CHPos+1 to r25
+		"swap r25\n\t"//swap nibbles
+		"andi r25,7\n\t"//only keep the 3 LS bits
+		"st z+, r25\n\t"//store into CHPos8[0], and increase Z by 1 (now points to CHPos8 for channel 2
+		"adiw r26,4\n\t"//add 4 to the X pointer (now pointing to CHPos+1 of channel 2)
+		
+		"ld r25, x\n\t"//same for channel 2
 		"swap r25\n\t"
 		"andi r25,7\n\t"
 		"st z+, r25\n\t"
+		"adiw r26,5\n\t"//increase by 5 here instead (pointing to CHPos+2 in channel 3 now)
+		
+		//goal here is CHPos8[2]=((CHPos>>12)&31) 00000000 00000001 11110000 00000000
+		"ld r25, x\n\t"//load byte (the one with 1 bit we keep) into r25
+		"ror r25\n\t"//rotate bits right (puts that bit into carry
+		"ld r25, -x\n\t"//decrease x, then load it to r25
+		"ror r25\n\t"//rotate right (bit from carry comes into the new value, looks like 11111000 now
+		"lsr r25\n\t"//shift right 3 times
+		"lsr r25\n\t"
+		"lsr r25\n\t"
+		"st z+, r25\n\t"//store into CHPos8[2] for ch 3
 		"adiw r26,4\n\t"
-		"ld r25, x\n\t"
-		"swap r25\n\t"
-		"andi r25,7\n\t"
-		"st z+, r25\n\t"
-		"adiw r26,5\n\t"
-		"ld r25, x\n\t"
-		"ror r25\n\t"
-		"ld r25, -x\n\t"
-		"ror r25\n\t"
-		"lsr r25\n\t"
-		"lsr r25\n\t"
-		"lsr r25\n\t"
-		"st z+, r25\n\t"
-		"adiw r26,4\n\t"
-		"ld r25, x+\n\t"
-		"rol r25\n\t"
-		"ld r25, x+\n\t"
-		"rol r25\n\t"
-		"st z+, r25\n\t"
-		"ld r25, x\n\t"
-		"rol r25\n\t"
-		"st z+, r25\n\t"
-		"ld r25, -x\n\t"
-		"ld r25, -x\n\t"
-		"swap r25\n\t"
-		"andi r25,7\n\t"
-		"st z, r25\n\t"
+		
+		//goal here is CHPos8=(CHPos>>15) 00000222 21111111 10000000 00000000 bits marked 1 go into CHpos8[3], bits marked 2 go into CHPos8[4]
+		"ld r25, x+\n\t"//load byte, then increase pointer X by 1
+		"rol r25\n\t"//roll bits left, bit marked 1 is now in carry
+		"ld r25, x+\n\t"//load the next byte, and increase x again
+		"rol r25\n\t"//roll bits left again, all 1's are now in r25, and the 2 gets shifted to carry
+		"st z+, r25\n\t"//store this to CHpos8[3]
+		"ld r25, x\n\t"//load last byte
+		"rol r25\n\t"//roll bits left, should now look like 00002222
+		"st z+, r25\n\t"//store in CHpos8[4]
+		
+		//goal here is CHpos8[5]=((CHPos>>12)&7) //same as pulse channels, but this is so we can get the right noise bit
+		"ld r25, -x\n\t"//subtract 1 from x
+		"ld r25, -x\n\t"//subtract 1 from x and store into r25 (which now is CHPos+1 for channel 4)
+		"swap r25\n\t"//swap nibbles
+		"andi r25,7\n\t"//only keep 3 lsb
+		"st z, r25\n\t"//store into CHpos8[5]
 	);
 	u8 chWavPos=dutyTable[CHFPos8[0]+NRx1Duty[0]];
 	if(CHENL[0]) outputL+=(NRx2Volume[0]*chWavPos);
