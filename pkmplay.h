@@ -465,17 +465,18 @@ void playerProcessNSE(){//main engine code for noise channel
 	if(NRxFreq[3]<0xFFFF){
 		if(drumTimer==0){
 			if(drumData[drumIndex]<0xFF){
-				drumTimer=(drumData[drumIndex++]&0xF)+1;
+				drumTimer=(drumData[drumIndex++]&0xF);
 				trackEnvelope[2]=drumData[drumIndex++];
 				writeNRx2(2,trackEnvelope[2]);
 				NRxFreq[3]=drumData[drumIndex++];
+				NR43Stage=NRxFreq[3]&8;
+				CHFreq[3]=getNSEFreq(NRxFreq[3]);
 			}else{
 				NRxFreq[3]=0xFFFF;
 			}
 		}else{
 			drumTimer--;
 		}
-		CHFreq[3]=getNSEFreq(NRxFreq[3]);
 	}
 	trackNoteLength[3]-=0x100;
 }
