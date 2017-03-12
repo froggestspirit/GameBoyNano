@@ -93,7 +93,7 @@ s8 trackNoteOffset[4];
 u8 trackEnvelope[4];
 u8 trackSpeed[4];
 u8 trackOctave[4];
-s16 trackNoteLength[4];
+s32 trackNoteLength[4];
 u8 trackArpDuty[4*4];
 bool trackUseArpDuty[4];
 u8 trackVibratoDepth[4];
@@ -114,6 +114,7 @@ u32 getFreq(u16 gbFreq){
 }
 
 u32 getNSEFreq(u16 gbFreq){
+  gbFreq=(gbFreq&7)+((gbFreq&0xF0)>>1);
   gbFreq=gbFreq<<1;
   u32 r=pgm_read_word_near(freqNSETable + gbFreq+1);
   r=r<<16;
