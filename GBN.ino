@@ -303,15 +303,17 @@ ISR(TIMER0_COMPA_vect){
 	if(frame>=FRAME_MINUS){// called at ~60Hz
 		buttonNextLState=buttonNextState;
 		buttonNextState=(PIND&4);
-		if(tracksComplete==0x0F){
+		if((tracksComplete&0x0F)==0x0F){
 			fadeTimer++;
+			if(tracksComplete==0xFF) fadeTimer=0xF0;
 			if(fadeTimer>=0xF0){
 				curSong++;
 				curSong%=TOTAL_SONGS;
-       //skip these to avoid glitches
-       if(curSong==31) curSong++;//after rival fight
-       if(curSong==73) curSong++;//wild battle night
-       if(curSong==75) curSong++;//wild victory 2
+				//skip these to avoid glitches
+				if(curSong==31) curSong++;//after rival fight
+				if(curSong==57) curSong++;//look poke-maniac (this song will loop endlessly due to loop structure in ch1)
+				if(curSong==73) curSong++;//wild battle night
+				if(curSong==75) curSong++;//wild victory 2
 				initPlayer();
 			}
 		}
