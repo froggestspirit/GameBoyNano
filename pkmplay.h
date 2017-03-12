@@ -223,7 +223,7 @@ void executeCommand(u8 channel){//the code to figure out what bytes do what acti
 				}else{
 					trackDone[channel]=true;
 					CHENL[channel]=CHENR[channel]=0;
-					tracksComplete|=(1<<channel);
+					tracksComplete|=(0x11<<channel);
 				}
 			break;
 		}
@@ -420,7 +420,7 @@ void executeCommandNSE(){//the code to figure out what bytes do what actions in 
 				}else{
 					trackDone[3]=true;
 					CHENL[3]=CHENR[3]=0;
-					tracksComplete|=(8);
+					tracksComplete|=(0x88);
 				}
 			break;
 		}
