@@ -208,7 +208,7 @@ void initPlayer(){//set up the variables for starting a song
 		CHENL[i]=1;
 		CHENR[i]=1;
 		trackDone[i]=false;
-		tracksComplete^=(1<<i);
+		tracksComplete^=(0x11<<i);
 		curCommand--;
 	}
 }
